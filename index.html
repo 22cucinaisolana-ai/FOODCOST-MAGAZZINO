@@ -89,6 +89,8 @@ tr.tot td{font-weight:800;border-top:2px solid var(--oliva-200)}
 .login .marchio{color:var(--oliva-900);font-size:48px}
 .login form{display:grid;gap:14px;margin-top:18px}
 .vuoto{color:var(--grigio);font-size:15px;padding:10px 0}
+.th-ord{border:0;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--grigio);cursor:pointer;padding:0;white-space:nowrap}
+.th-ord:hover,.th-ord.on{color:var(--oliva-700)}
 .testa{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 2px 12px}
 .testa h2{margin:0;font-size:24px}
 .cerca{width:100%;margin-bottom:6px}
@@ -172,7 +174,7 @@ const addDays = (iso,n) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getD
 const ui = {
   tab:'servizio', user:null,
   svData: localISO(), svTurno: new Date().getHours()<16 ? 'pranzo' : 'cena',
-  editProdotto:null, editFornitore:null, editPiatto:null, editMenu:null, catFiltro:'tutte',
+  editProdotto:null, editFornitore:null, ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
   coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:''
 };
 const OPEN = new Set((()=>{try{return JSON.parse(localStorage.getItem('22open2'))}catch{return null}})() || ['sv-linea','sv-porta','sv-vendite','ca-nuovo','ma-giac','sc-piatti','re-calc','re-storico','co-sintesi']);
@@ -274,6 +276,23 @@ function porzioniLinea(piattoId){
 function porzioniPossibili(piattoId){
   const cc = compPiatto(piattoId); if(!cc.length) return null;
   return Math.max(0, Math.min(...cc.map(c=>Math.floor(stock(c.prodotto_id).mag / +c.quantita + 1e-9))));
+}
+
+/* ===== Ordinamento ===== */
+const cmpVal = (a,b) => (a==null||a==='') - (b==null||b==='') || (typeof a==='number' && typeof b==='number' ? a-b : String(a).localeCompare(String(b),'it',{numeric:true}));
+function ordina(lista, ord, chiavi){ const f=chiavi[ord.k]||chiavi.nome; return [...lista].sort((x,y)=>{ const c=cmpVal(f(x),f(y)); return c ? c*ord.d : x.nome.localeCompare(y.nome,'it'); }); }
+const KEY_PROD = { nome:p=>p.nome.toLowerCase(), fornitore:p=>nomeForn(p).toLowerCase(), categoria:p=>p.categoria, prezzo:p=>p.ultimo_prezzo!=null?+p.ultimo_prezzo:null, costo:p=>costo(p.id)||null, iva:p=>p.iva_pct!=null?+p.iva_pct:null, data:p=>p.data_ultima_fattura||null, stato:p=>p.attivo?0:1 };
+const KEY_FORN = { nome:f=>f.nome.toLowerCase(), citta:f=>(f.citta||'').toLowerCase(), pagamento:f=>(f.pagamento||'').toLowerCase(), prodotti:f=>S.prodotti.filter(p=>p.fornitore_id===f.id).length };
+/* intestazione cliccabile: 'Etichetta|chiave' ; '#' davanti = colonna numerica */
+function thOrd(etich, chiave, ord, act){
+  const num = etich.startsWith('#'); const l = etich.replace(/^#/,'');
+  if(!chiave) return `<th class="${num?'n':''}">${esc(l)}</th>`;
+  const on = ord.k===chiave; const freccia = on ? (ord.d===1?' ▲':' ▼') : '';
+  return `<th class="${num?'n':''}"><button class="th-ord ${on?'on':''}" data-act="${act}" data-k="${chiave}" aria-label="Ordina per ${esc(l)}">${esc(l)}${freccia}</button></th>`;
+}
+function tabellaOrd(cols, ord, act, rows, emptyMsg){
+  if(!rows.length) return `<p class="vuoto">${emptyMsg}</p>`;
+  return `<div class="tabella"><table><thead><tr>${cols.map(([e,k])=>thOrd(e,k,ord,act)).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 
 /* ===== Pezzi di interfaccia ===== */
@@ -547,7 +566,16 @@ function vMagazzino(){
       ${ui.editProdotto!=='new'?`<button class="btn sec" type="button" data-act="toggle-prodotto" data-id="${ep.id}">${ep.attivo?'Disattiva':'Riattiva'}</button>`:''}</div>
     </form>
     ${ui.editProdotto!=='new' && ep.categoria==='preparazione' ? vRicettaPrep(ep) : ''}` : ''}
-    ${tabella(['Prodotto','Fornitore','Confezione','#Ultimo prezzo','#IVA','Si conta in','Stato',''], [...S.prodotti].sort(byNome).map(p=>`<tr>${td(esc(p.nome)+`<br><small style="color:var(--grigio)">${esc(p.categoria)}</small>`)}${td(esc(nomeForn(p)))}${td(esc(p.confezione||'')+(contenuto(p)?`<br><small style="color:var(--grigio)">1 ${esc(umFatt(p)||'unità')} = ${fq(p,contenuto(p))}</small>`:(p.um_acquisto&&p.ultimo_prezzo!=null?'<br><span class="chip ambra">manca il contenuto</span>':'')))}${td(p.ultimo_prezzo!=null?eur(+p.ultimo_prezzo)+(p.um_acquisto?' / '+esc(p.um_acquisto):''):'—',1)}${td(p.iva_pct!=null?num(p.iva_pct,0)+'%':'—',1)}${td(U[p.unita].nome)}${td(p.attivo?'<span class="chip">attivo</span>':'<span class="chip ambra">non attivo</span>')}<td><button class="btn sec picc" data-act="edit-prodotto" data-id="${p.id}">Modifica</button></td></tr>`), 'Nessun prodotto ancora.')}`)}
+    <div class="riga" style="margin-top:14px">
+      <label>Cerca<input id="pr-cerca" placeholder="nome del prodotto…" autocomplete="off"></label>
+      <label>Fornitore<select id="pr-forn"><option value="tutti">Tutti</option>${[...S.fornitori].sort(byNome).map(f=>`<option value="${f.id}" ${ui.filtroForn===f.id?'selected':''}>${esc(f.nome)}</option>`).join('')}<option value="nessuno" ${ui.filtroForn==='nessuno'?'selected':''}>Senza fornitore</option></select></label>
+      <label>Categoria<select id="pr-cat"><option value="tutte">Tutte</option>${CATEGORIE.map(c=>`<option ${ui.filtroCatProd===c?'selected':''}>${c}</option>`).join('')}</select></label>
+      <label>Ordina per<select id="pr-ord">${[['nome','Nome'],['fornitore','Fornitore'],['categoria','Categoria'],['prezzo','Ultimo prezzo'],['costo','Costo vero'],['iva','IVA'],['data','Ultimo acquisto'],['stato','Stato']].map(([k,l])=>`<option value="${k}" ${ui.ordProd.k===k?'selected':''}>${l}</option>`).join('')}</select></label>
+      <button class="btn sec" data-act="pr-dir" aria-label="Inverti ordine">${ui.ordProd.d===1?'A → Z ▲':'Z → A ▼'}</button>
+    </div>
+    ${(()=>{ const lista = ordina(S.prodotti.filter(p=>(ui.filtroForn==='tutti' || (ui.filtroForn==='nessuno' ? !p.fornitore_id : p.fornitore_id===ui.filtroForn)) && (ui.filtroCatProd==='tutte' || p.categoria===ui.filtroCatProd)), ui.ordProd, KEY_PROD);
+      return `<p class="nota" id="pr-conta">${lista.length} prodotti</p>` + tabellaOrd([['Prodotto','nome'],['Fornitore','fornitore'],['Confezione',null],['#Ultimo prezzo','prezzo'],['#IVA','iva'],['Ultimo acquisto','data'],['Stato','stato'],['',null]], ui.ordProd, 'ord-prod',
+        lista.map(p=>(`<tr>${td(esc(p.nome)+`<br><small style="color:var(--grigio)">${esc(p.categoria)}</small>`)}${td(esc(nomeForn(p)))}${td(esc(p.confezione||'')+(contenuto(p)?`<br><small style="color:var(--grigio)">1 ${esc(umFatt(p)||'unità')} = ${fq(p,contenuto(p))}</small>`:(p.um_acquisto&&p.ultimo_prezzo!=null?'<br><span class="chip ambra">manca il contenuto</span>':'')))}${td(p.ultimo_prezzo!=null?eur(+p.ultimo_prezzo)+(p.um_acquisto?' / '+esc(p.um_acquisto):''):'—',1)}${td(p.iva_pct!=null?num(p.iva_pct,0)+'%':'—',1)}${td(p.data_ultima_fattura?dataIt(p.data_ultima_fattura):'—')}${td(p.attivo?'<span class="chip">attivo</span>':'<span class="chip ambra">non attivo</span>')}<td><button class="btn sec picc" data-act="edit-prodotto" data-id="${p.id}">Modifica</button></td></tr>`)).map((h,i)=>h.replace('<tr>',`<tr data-nome="${esc(lista[i].nome.toLowerCase())}">`)), 'Nessun prodotto con questi filtri.'); })()}`)}
 
   ${det('ma-forn','Fornitori', `
     <div style="margin-top:12px"><button class="btn sec" data-act="new-fornitore">+ Nuovo fornitore</button></div>
@@ -560,7 +588,7 @@ function vMagazzino(){
       <label>Note<input name="note" value="${esc(ef.note||'')}"></label>
       <div class="riga"><button class="btn" type="submit">Salva fornitore</button><button class="btn sec" type="button" data-act="chiudi-fornitore">Chiudi</button></div>
     </form>`; })() : ''}
-    ${tabella(['Fornitore','Città','Pagamento','Telefono','#Prodotti',''], [...S.fornitori].sort(byNome).map(f=>`<tr>${td(esc(f.nome))}${td(esc(f.citta||''))}${td(esc(f.pagamento||''))}${td(esc(f.telefono||''))}${td(S.prodotti.filter(p=>p.fornitore_id===f.id).length,1)}<td><button class="btn sec picc" data-act="edit-fornitore" data-id="${f.id}">Modifica</button></td></tr>`), 'Nessun fornitore ancora.')}`)}`;
+    ${tabellaOrd([['Fornitore','nome'],['Città','citta'],['Pagamento','pagamento'],['Telefono',null],['#Prodotti','prodotti'],['',null]], ui.ordForn, 'ord-forn', ordina(S.fornitori, ui.ordForn, KEY_FORN).map(f=>`<tr>${td(esc(f.nome))}${td(esc(f.citta||''))}${td(esc(f.pagamento||''))}${td(esc(f.telefono||''))}${td(S.prodotti.filter(p=>p.fornitore_id===f.id).length,1)}<td><button class="btn sec picc" data-act="filtra-forn" data-id="${f.id}">Prodotti</button> <button class="btn sec picc" data-act="edit-fornitore" data-id="${f.id}">Modifica</button></td></tr>`), 'Nessun fornitore ancora.')}`)}`;
 }
 function vRicettaPrep(p){
   const righe = S.prep.filter(r=>r.prep_id===p.id);
@@ -809,6 +837,7 @@ document.addEventListener('toggle', e=>{
 document.addEventListener('input', e=>{
   if(e.target.closest('#f-porta')) aggiornaPorta();
   if(e.target.name==='cerca') esitoCerca(e.target.form);
+  if(e.target.id==='pr-cerca'){ const t=e.target.value.trim().toLowerCase(); let n=0; document.querySelectorAll('tr[data-nome]').forEach(r=>{ const ok=!t||r.dataset.nome.includes(t); r.style.display=ok?'':'none'; if(ok) n++; }); const c=$('#pr-conta'); if(c) c.textContent=n+' prodotti'; }
   if(e.target.id==='sc-cerca'){ const t=e.target.value.trim().toLowerCase(); document.querySelectorAll('.card[data-nome]').forEach(c=>c.style.display = !t || c.dataset.nome.includes(t) ? '' : 'none'); }
   if(e.target.closest('#f-carico')) aggiornaCalcCarico();
   if(e.target.closest('#f-produzione')) aggiornaProduzione();
@@ -820,6 +849,9 @@ document.addEventListener('change', e=>{
   if(id==='sv-data'){ ui.svData=e.target.value; render(); }
   if(id==='sv-turno'){ ui.svTurno=e.target.value; render(); }
   if(id==='ma-cat'){ ui.catFiltro=e.target.value; render(); }
+  if(id==='pr-forn'){ ui.filtroForn=e.target.value; render(); }
+  if(id==='pr-cat'){ ui.filtroCatProd=e.target.value; render(); }
+  if(id==='pr-ord'){ ui.ordProd={k:e.target.value, d:1}; render(); }
   if(id==='co-da'){ ui.coDa=e.target.value; render(); }
   if(id==='co-a'){ ui.coA=e.target.value; render(); }
   if(e.target.closest('#f-porta')) aggiornaPorta();
@@ -840,6 +872,10 @@ document.addEventListener('click', e=>{
     case 'edit-prodotto': ui.editProdotto=id; render(); $('#f-prodotto')?.scrollIntoView({behavior:'smooth',block:'center'}); break;
     case 'chiudi-prodotto': ui.editProdotto=null; render(); break;
     case 'toggle-prodotto': { const p=P(id); run(()=>upd('prodotti',id,{attivo:!p.attivo}), p.attivo?'Prodotto disattivato':'Prodotto riattivato'); break; }
+    case 'ord-prod': { const k=t.dataset.k; ui.ordProd = ui.ordProd.k===k ? {k, d:-ui.ordProd.d} : {k, d:1}; render(); break; }
+    case 'ord-forn': { const k=t.dataset.k; ui.ordForn = ui.ordForn.k===k ? {k, d:-ui.ordForn.d} : {k, d:1}; render(); break; }
+    case 'pr-dir': ui.ordProd = {k:ui.ordProd.k, d:-ui.ordProd.d}; render(); break;
+    case 'filtra-forn': ui.filtroForn=id; OPEN.add('ma-prod'); render(); document.getElementById('ma-prod')?.scrollIntoView({behavior:'smooth'}); break;
     case 'new-fornitore': ui.editFornitore='new'; OPEN.add('ma-forn'); render(); break;
     case 'edit-fornitore': ui.editFornitore=id; render(); break;
     case 'chiudi-fornitore': ui.editFornitore=null; render(); break;
