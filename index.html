@@ -246,7 +246,7 @@ function contenuto(p){
 }
 const umFatt = p => (p.um_acquisto||'').toUpperCase();
 function descrUnitaFattura(p){ const c=contenuto(p); if(!c) return ''; return `${umFatt(p)||'unità'} da ${fq(p,c)}`; }
-const TIPI_MOV = {omaggio:'Omaggio', reso:'Reso', in_linea:'In linea',rientro:'Rientro in magazzino',venduto:'Venduto',surplus:'Venduto dal magazzino (surplus)',scarto:'Scarto',pasto_personale:'Pasto personale',rettifica:'Differenza alla conta',uso_produzione:'Usato per preparazione'};
+const TIPI_MOV = {omaggio:'Omaggio', reso:'Reso', coperti:'Usato per i coperti', in_linea:'In linea',rientro:'Rientro in magazzino',venduto:'Venduto',surplus:'Venduto dal magazzino (surplus)',scarto:'Scarto',pasto_personale:'Pasto personale',rettifica:'Differenza alla conta',uso_produzione:'Usato per preparazione'};
 
 const localISO = (d=new Date()) => new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 const addDays = (iso,n) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return localISO(d); };
@@ -373,19 +373,20 @@ const AIUTO_CAMPI = {
   'f-prodotto.annata':"L'anno in etichetta.",
   'f-prodotto.vitigni':"Come li vuoi scritti in carta dei vini.",
   'f-prodotto.zona':"La provincia o la zona, come in carta.",
+  'f-prodotto.pezzi_per_coperto':"Solo tovagliato: quanti pezzi usa un coperto (1 tovagliolo, 0,5 runner…). L'app li scarica quando salvi i coperti.",
   'S:f-prodotto.unita':"Vino e distillati: millilitri, così si vendono anche a calice. Acqua, bibite, cialde, tovagliato: pezzi.",
   'S:f-prodotto.contenuto_conf':"Per le bottiglie: i ml di una bottiglia, es. 750. Così si conta a bottiglie.",
   'S:f-prodotto.categoria':"Tovagliato, materiali e pulizia stanno fuori dal costo delle bevande.",
   'S:f-carico.prezzo':"Il totale della riga in fattura, senza IVA.",
   'S:f-carico.comprato':"Quante bottiglie o pezzi.",
   'f-crea-art.prezzo_intero':"Il prezzo in carta della bottiglia o del pezzo.",
-  'f-crea-art.ml':"Quanto vino va in un calice (o distillato in un bicchiere).",
+  'f-crea-art.ml':"Il calice è 1/5 di bottiglia (150 ml in una 0,75). Per i distillati, i ml del bicchiere.",
   'f-crea-art.prezzo_calice':"Il prezzo in carta del calice o del bicchiere.",
   'f-piatto.prezzo':"Serve a calcolare incasso e costo ogni 100 €."
 };
 /* spiegazioni della sala: sostituiscono quelle della cucina dove il senso cambia */
 const AIUTO_SALA = {
-  'ss-coperti':"Quanti coperti ha fatto il servizio. Servono per sapere quanto costano bevande e tovagliato a persona.",
+  'ss-coperti':"Quanti coperti ha fatto il servizio. Salvandoli, l'app scarica anche il tovagliato usato (tovaglioli, runner) e calcola bevande e tovagliato a persona.",
   'ss-vendite':"Il modo più veloce: «Importa dalla cassa» e carica il file delle vendite scaricato da Tiller. Altrimenti copia dalla cassa quanti articoli sono stati venduti: bottiglie, calici, acqua, caffè. Lascia vuoto quello che non si è venduto. Se sbagli, cancella la riga in «Movimenti del giorno».",
   'ss-omaggi':"Tutto quello che esce senza essere pagato: calici offerti, bottiglie rotte, vino che sa di tappo, caffè del personale. Se non si segna qui, alla conta risulta come merce mancante.",
   'sv-conta':"Serve a scoprire subito se qualcosa non torna. Le bottiglie aperte si contano a occhio: mezza bottiglia = 0,5.",
@@ -396,7 +397,7 @@ const AIUTO_SALA = {
   'co-sintesi':"Quante bevande sono state usate nel periodo e quante sono spiegate da venduto, omaggi, rotture e personale. Quello che resta è «non spiegato».",
   'co-confronto':"La merce comprata messa a confronto con quella che il venduto fa uscire. Mostra su quali bottiglie nasce la differenza.",
   'co-famiglie':"Per ogni famiglia (vino in bottiglia, calici, acqua, caffè…) quanto si è incassato e quanto è costata la merce. «Merce ogni 100 €» è il costo delle bevande.",
-  'co-tovagliato':"Il tovagliato è a noleggio: conta quanti pezzi la lavanderia consegna e ritira, e quanto costa per coperto.",
+  'co-tovagliato':"Il tovagliato è a noleggio: pezzi consegnati puliti, usati con i coperti, ritirati sporchi. Se gli sporchi ritirati sono meno degli usati, mancano pezzi.",
   'co-nonfood':"Candele, tovaglioli di carta, detersivi e simili. Non entrano nel costo delle bevande: si contano a fine mese.",
   'co-scarti':"Omaggi, rotture e consumo del personale, con il motivo.",
   'sc-impost':"Nome come in cassa, famiglia e prezzo in carta. «Togli dalla carta» nasconde l'articolo senza perdere i conti fatti."
@@ -676,7 +677,7 @@ function render(){
     <nav class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')}</nav>
     <datalist id="dl-prodotti">${S.prodotti.filter(p=>p.attivo && isFood(p)).sort(byNome).map(p=>`<option value="${esc(p.nome)}"></option>`).join('')}</datalist>
     <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo})[ui.tab]()}</main>`;
-  if(ui.tab==='servizio') aggiornaPorta();
+  if(ui.tab==='servizio'){ aggiornaPorta(); aggiornaCoperti(); }
   if(ui.tab==='carichi'){ aggiornaCalcCarico(); aggiornaProduzione(); }
   if(ui.tab==='rese') aggiornaCalcolatrice();
   aggiungiAiuto($('#app'));
@@ -779,6 +780,11 @@ function vServizio(){
       ...movI.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td(esc(P(m.prodotto_id)?.nome||'?'))}${td(esc(TIPI_MOV[m.tipo]))}${td(fq(m.prodotto_id,+m.quantita),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mov" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`)],
      'Nessun movimento in questo giorno.'), dataIt(ui.svData))}`;
 }
+function aggiornaCoperti(){
+  const f=$('#f-coperti'); const box=$('#cop-tov'); if(!f||!box) return;
+  const n=Math.round(parseN(f.elements['coperti'].value)); const tov=S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0);
+  box.innerHTML = n>0 && tov.length ? `<p class="nota" style="margin:0">Salvando escono: ${tov.map(p=>`<b>${fq(p, n * +p.pezzi_per_coperto)}</b> ${esc(p.nome.toLowerCase())}`).join(', ')}.</p>` : (n>0 ? '<p class="nota" style="margin:0">Nessun tovagliato con «pezzi per coperto»: non esce niente.</p>' : '');
+}
 function aggiornaPorta(){
   const f=$('#f-porta'); if(!f) return; const box=$('#porta-calc');
   const p=PI(f.elements['piatto_id'].value); if(!p){ box.innerHTML=''; return; }
@@ -813,7 +819,11 @@ function vServizioSala(){
     <form id="f-coperti" class="griglia">
       <label>Coperti del servizio<input name="coperti" inputmode="numeric" value="${sv?.coperti??''}" placeholder="es. 28"></label>
       <button class="btn" type="submit">Salva</button>
-    </form>`, sv?.coperti!=null ? sv.coperti+' coperti' : '')}
+      <div id="cop-tov" style="grid-column:1/-1"></div>
+    </form>
+    ${(()=>{ const mm = sv ? S.movimenti.filter(m=>m.servizio_id===sv.id && m.tipo==='coperti') : [];
+      return mm.length ? `<div class="calc">${mm.map(m=>`<div><span>${esc(P(m.prodotto_id)?.nome||'?')} usati</span><b>${fq(m.prodotto_id,+m.quantita)}</b></div>`).join('')}</div><p class="nota">Già scaricati per questo turno. Se cambi i coperti e risalvi, si ricalcolano.</p>` : ''; })()}`,
+    sv?.coperti!=null ? sv.coperti+' coperti' : '')}
 
   ${det('ss-vendite','2 · Venduto dalla cassa', art.length ? `
     <div style="margin-top:12px">${IMP ? vImport(sv) : `<button class="btn" data-act="imp-scegli">Importa dalla cassa</button> <span class="nota">oppure scrivi i numeri qui sotto</span>`}
@@ -851,6 +861,15 @@ function vServizioSala(){
      [...movP.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td('<b>'+esc(PI(m.piatto_id)?.nome||'?')+'</b>')}${td(esc(TIPI_MOV[m.tipo]))}${td(num(m.porzioni),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mpiatto" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`),
       ...movI.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td(esc(P(m.prodotto_id)?.nome||'?'))}${td(esc(TIPI_MOV[m.tipo]))}${td(fq(m.prodotto_id,+m.quantita),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mov" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`)],
      'Nessun movimento in questo giorno.'), dataIt(ui.svData))}`;
+}
+
+/* tovagliato: ogni coperto usa i pezzi scritti nel prodotto (es. 1 tovagliolo). Si riscrive a ogni salvataggio dei coperti */
+async function scaricaTovagliato(sv, coperti){
+  const {error} = await sb.from('movimenti').delete().eq('servizio_id', sv.id).eq('tipo','coperti'); if(error) throw error;
+  if(!(coperti>0)) return;
+  const righe = S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0)
+    .map(p=>({data:sv.data, prodotto_id:p.id, tipo:'coperti', da:'magazzino', quantita:+(coperti * +p.pezzi_per_coperto).toFixed(2), servizio_id:sv.id, motivo:`${coperti} coperti`}));
+  if(righe.length) await ins('movimenti', righe);
 }
 
 /* ===== IMPORTAZIONE DAL FILE DELLA CASSA ===== */
@@ -1070,7 +1089,8 @@ function vMagazzino(){
       <label>Denominazione (vini)<input name="denominazione" value="${esc(ep.denominazione||'')}" placeholder="es. Sicilia DOC"></label>
       <label>Annata (vini)<input name="annata" value="${esc(ep.annata||'')}" placeholder="es. 2023"></label>
       <label>Vitigni (vini)<input name="vitigni" value="${esc(ep.vitigni||'')}" placeholder="es. Carricante, Catarratto"></label>
-      <label>Zona (vini)<input name="zona" value="${esc(ep.zona||'')}" placeholder="es. Catania"></label>`
+      <label>Zona (vini)<input name="zona" value="${esc(ep.zona||'')}" placeholder="es. Catania"></label>
+      <label>Pezzi usati per coperto (tovagliato)<input name="pezzi_per_coperto" inputmode="decimal" value="${esc(ep.pezzi_per_coperto??'')}" placeholder="es. 1"></label>`
       : `<label>Quantità da un lotto (solo preparazioni, g/ml/pz)<input name="resa_quantita" inputmode="decimal" value="${esc(ep.resa_quantita??'')}"></label>`}
       <label style="grid-column:1/-1">Note<input name="note" value="${esc(ep.note||'')}"></label>
       <div class="riga"><button class="btn" type="submit">Salva prodotto</button><button class="btn sec" type="button" data-act="chiudi-prodotto">Chiudi</button>
@@ -1265,10 +1285,12 @@ function vCreaArticoli(p){
     ${sfuso && !(+p.contenuto_conf>0) ? '<div class="avviso">Prima scrivi il contenuto della bottiglia (es. 750) e salva il prodotto.</div>' : `
     <form id="f-crea-art" class="griglia" data-id="${p.id}">
       <label>Prezzo ${vino?'della bottiglia':'a pezzo'} (€)<input name="prezzo_intero" inputmode="decimal" placeholder="vuoto = non si vende intero"></label>
-      ${sfuso?`<label>${vino?'Millilitri per calice':'Millilitri per bicchiere'}<input name="ml" inputmode="decimal" value="${vino?125:dist?40:''}"></label>
+      ${sfuso?`<label>${vino?'Millilitri per calice':'Millilitri per bicchiere'}<input name="ml" inputmode="decimal" value="${vino?num(+p.contenuto_conf/5,2):dist?40:''}"></label>
       <label>Prezzo ${vino?'del calice':'del bicchiere'} (€)<input name="prezzo_calice" inputmode="decimal" placeholder="vuoto = non si vende sfuso"></label>`:''}
+      ${vino?`<label style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600"><input type="checkbox" name="deg" style="min-height:auto;width:20px;height:20px"> Anche in degustazione (1/8 di bottiglia, ${num(+p.contenuto_conf/8,2)} ml, prezzo 0)</label>`:''}
       <button class="btn" type="submit">Crea articoli</button>
-    </form>`}</div>`;
+    </form>
+    ${vino?'<p class="nota">Calice = 1/5 di bottiglia. Degustazione = 1/8 di bottiglia.</p>':''}`}</div>`;
 }
 
 /* ===== RESE ===== */
@@ -1481,11 +1503,13 @@ function vTovagliato(inP, coperti){
   if(!pezzi.length) return '<p class="vuoto">Nessun pezzo di tovagliato in anagrafica. Crealo in «Cantina e magazzino → Prodotti» con famiglia «tovagliato».</p>';
   let spesa=0;
   const righe = pezzi.map(p=>{ const car=S.carichi.filter(c=>c.prodotto_id===p.id && inP(c.data)); const cons=car.reduce((s,c)=>s + +c.quantita,0), e=car.reduce((s,c)=>s + +c.prezzo,0); spesa+=e;
-    const rit=S.movimenti.filter(m=>m.prodotto_id===p.id && m.tipo==='reso' && inP(m.data)).reduce((s,m)=>s + +m.quantita,0); const st=stock(p.id);
-    return `<tr>${td(esc(p.nome))}${td(num(cons,0),1)}${td(num(rit,0),1)}${td(num(st.mag,0),1)}${td(eur(e),1)}</tr>`; });
-  return tabella(['Pezzo','#Consegnati','#Ritirati','#Da noi adesso (app)','#Spesa'], righe)
+    const somma = (tipo, filtro=()=>true) => S.movimenti.filter(m=>m.prodotto_id===p.id && m.tipo===tipo && filtro(m)).reduce((s,m)=>s + +m.quantita,0);
+    const usati=somma('coperti', m=>inP(m.data)), rit=somma('reso', m=>inP(m.data)); const st=stock(p.id);
+    const sporchi = somma('coperti') - somma('reso');
+    return `<tr>${td(esc(p.nome)+(+p.pezzi_per_coperto>0?`<small class="q">${num(+p.pezzi_per_coperto,2)} per coperto</small>`:'<br><span class="chip ambra">manca «pezzi per coperto»</span>'))}${td(num(cons,0),1)}${td(num(usati,0),1)}${td(num(rit,0),1)}<td class="n" data-v="${st.mag}"><span class="${st.mag<0?'neg':''}">${num(st.mag,0)}</span></td>${td(num(Math.max(0,sporchi),0),1)}${td(eur(e),1)}</tr>`; });
+  return tabella(['Pezzo','#Consegnati','#Usati (coperti)','#Ritirati','#Puliti da noi (app)','#Sporchi da ritirare','#Spesa'], righe)
     + `<div class="calc"><div><span>Spesa lavanderia nel periodo</span><b>${eur(spesa)}</b></div><div><span>Tovagliato per coperto</span><b>${coperti?eur(spesa/coperti):'—'}</b></div></div>`
-    + '<p class="nota">«Da noi adesso» sono i pezzi consegnati e non ancora ritirati, puliti o sporchi. Se alla conta ne mancano, sono pezzi che la lavanderia ci fa pagare.</p>';
+    + '<p class="nota">Ogni volta che salvi i coperti, l\'app toglie dai puliti i pezzi usati (per esempio 1 tovagliolo a coperto). «Sporchi da ritirare» sono gli usati non ancora ripresi dalla lavanderia: se il numero ritirato è più basso, mancano pezzi che la lavanderia ci fa pagare. Alla conta si contano solo i puliti.</p>';
 }
 function vConteFatte(inP){
   const lista = S.conte.filter(c=>inP(c.data)).sort((x,y)=>(y.data+y.created_at).localeCompare(x.data+x.created_at));
@@ -1521,7 +1545,7 @@ function cgGruppi(){
     {k:'vini', t:'Vini', s:'bollicine, bianchi, rosati, rossi, dolci', lista:food.filter(p=>VINI.has(p.categoria))},
     {k:'bevande', t:'Acqua, bibite e birre', s:'frigo e magazzino', lista:food.filter(p=>['acqua','bibite','birra'].includes(p.categoria))},
     {k:'caffe', t:'Caffè, distillati e amari', s:'cialde, tè, bottiglie aperte', lista:food.filter(p=>['caffè e tè','distillati e amari'].includes(p.categoria))},
-    {k:'tovagliato', t:'Tovagliato', s:'pezzi puliti e sporchi da noi', lista:att.filter(p=>p.categoria==='tovagliato')},
+    {k:'tovagliato', t:'Tovagliato', s:'solo i pezzi puliti', lista:att.filter(p=>p.categoria==='tovagliato')},
     {k:'vecchi', t:'Non contati da più di 7 giorni', s:'solo quelli che secondo l\'app ci sono', lista:food.filter(vecchi)},
     {k:'tutto', t:'Tutte le bevande', s:'tutti i prodotti attivi', lista:food},
     {k:'nonfood', t:'Materiali e pulizia', s:'di solito a fine mese', lista:att.filter(p=>['materiali','pulizia'].includes(p.categoria))}
@@ -1683,6 +1707,7 @@ document.addEventListener('toggle', e=>{
 }, true);
 document.addEventListener('input', e=>{
   if(e.target.closest('#f-porta')) aggiornaPorta();
+  if(e.target.closest('#f-coperti')) aggiornaCoperti();
   if(e.target.name==='cerca') esitoCerca(e.target.form);
   if(e.target.id==='pr-cerca'){ const t=e.target.value.trim().toLowerCase(); let n=0; document.querySelectorAll('tr[data-nome]').forEach(r=>{ const ok=!t||r.dataset.nome.includes(t); r.style.display=ok?'':'none'; if(ok) n++; }); const c=$('#pr-conta'); if(c) c.textContent=n+' prodotti'; }
   if(e.target.id==='sc-cerca'){ const t=e.target.value.trim().toLowerCase(); document.querySelectorAll('.card[data-nome]').forEach(c=>c.style.display = !t || c.dataset.nome.includes(t) ? '' : 'none'); }
@@ -1823,6 +1848,7 @@ document.addEventListener('submit', async e=>{
         const agg = vendi.length ? {chiuso:true} : {};
         if(IMP.coperti!=null && $('#imp-coperti')?.checked) agg.coperti = IMP.coperti;
         if(Object.keys(agg).length) await upd('servizi', sv.id, agg);
+        if(agg.coperti!=null) await scaricaTovagliato(sv, agg.coperti);
         IMP = null;
         if(senza.length) setTimeout(()=>toast('Registrato. Senza scheda, non hanno scaricato niente: '+senza.join(', '),'err'), 60);
       }, `Venduto dalla cassa registrato: ${num(tot,0)} articoli`);
@@ -1830,7 +1856,10 @@ document.addEventListener('submit', async e=>{
     }
     case 'f-coperti': {
       const n=Math.round(parseN(v('coperti'))); if(n<0) return;
-      run(async ()=>{ const sv=await ensureServizio(); await upd('servizi', sv.id, {coperti:v('coperti').trim()===''?null:n}); }, 'Coperti salvati');
+      const cop = v('coperti').trim()==='' ? null : n;
+      const tov = S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0);
+      run(async ()=>{ const sv=await ensureServizio(); await upd('servizi', sv.id, {coperti:cop}); await scaricaTovagliato(sv, cop); },
+        cop && tov.length ? `Coperti salvati. Tovagliato scaricato: ${tov.map(p=>fq(p, cop * +p.pezzi_per_coperto)+' '+p.nome.toLowerCase()).join(', ')}` : 'Coperti salvati');
       break;
     }
     case 'f-vendite-sala': {
@@ -1855,7 +1884,7 @@ document.addEventListener('submit', async e=>{
     }
     case 'f-reso': {
       const p=P(v('prodotto_id')); const q=parseN(v('quantita'))*(p?mulBig(p):1); if(!p || q<=0) return toast('Scegli il prodotto e la quantità.','err');
-      run(()=>ins('movimenti',{data:v('data')||localISO(), prodotto_id:p.id, tipo:'reso', da:'magazzino', quantita:+q.toFixed(3), motivo:v('motivo').trim()||(p.categoria==='tovagliato'?'ritirato dalla lavanderia':'reso al fornitore')}), `Reso segnato: ${fq(p,q)} di ${p.nome}`);
+      run(()=>ins('movimenti',{data:v('data')||localISO(), prodotto_id:p.id, tipo:'reso', da:p.categoria==='tovagliato'?null:'magazzino', quantita:+q.toFixed(3), motivo:v('motivo').trim()||(p.categoria==='tovagliato'?'ritirato dalla lavanderia':'reso al fornitore')}), `Reso segnato: ${fq(p,q)} di ${p.nome}`);
       break;
     }
     case 'f-crea-art': {
@@ -1865,6 +1894,7 @@ document.addEventListener('submit', async e=>{
       const nuovi=[];
       if(pi!=null) nuovi.push({nome:p.nome+(p.annata?' '+p.annata:''), portata:FAM_DA_CAT[p.categoria]||'altro', prezzo:pi, q:p.unita==='ml'?+p.contenuto_conf:1});
       if(pc!=null){ if(!(ml>0)) return toast('Scrivi i millilitri.','err'); nuovi.push({nome:p.nome+(vino?' (calice)':' (bicchiere)'), portata:vino?'vino al calice':(FAM_DA_CAT[p.categoria]||'altro'), prezzo:pc, q:ml}); }
+      if(f.elements['deg']?.checked) nuovi.push({nome:'Degustazione · '+p.nome, portata:'degustazione vini', prezzo:0, q:+(+p.contenuto_conf/8).toFixed(2)});
       if(!nuovi.length) return toast('Scrivi almeno un prezzo.','err');
       run(async ()=>{ for(const a of nuovi){ const d=await insOne('piatti',{nome:a.nome, portata:a.portata, prezzo:a.prezzo, reparto:'sala'}); await ins('piatto_componenti',{piatto_id:d.id, prodotto_id:p.id, quantita:a.q}); } }, `Creat${nuovi.length===1?'o':'i'} ${nuovi.length} articol${nuovi.length===1?'o':'i'}`);
       break;
@@ -1983,6 +2013,7 @@ document.addEventListener('submit', async e=>{
       const row = {nome:v('nome').trim(), categoria:v('categoria'), unita:v('unita'), fornitore_id:fid, fornitore: fid ? F(fid)?.nome : null, confezione:v('confezione').trim()||null, um_acquisto:v('um_acquisto').trim().toUpperCase()||null, contenuto_conf:nOrNull('contenuto_conf'), ultimo_prezzo:nOrNull('ultimo_prezzo'), iva_pct:nOrNull('iva_pct'), ultima_quantita:nOrNull('ultima_quantita'), note:v('note').trim()||null};
       if(f.elements['resa_quantita']) row.resa_quantita = nOrNull('resa_quantita');
       for(const k of ['produttore','denominazione','annata','vitigni','zona']) if(f.elements[k]) row[k] = v(k).trim()||null;
+      if(f.elements['pezzi_per_coperto']) row.pezzi_per_coperto = nOrNull('pezzi_per_coperto');
       if(f.dataset.id==='new') row.reparto = REP;
       if(!row.nome) return toast('Serve il nome.','err');
       const id=f.dataset.id;
