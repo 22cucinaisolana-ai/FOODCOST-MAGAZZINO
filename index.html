@@ -202,9 +202,10 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const S = {fornitori:[],prodotti:[],prep:[],carichi:[],movimenti:[],mpiatti_mov:[],servizi:[],piatti:[],pcomp:[],menu:[],mpiatti:[],conte:[],crighe:[],abbina:[]};
 const TAB = {fornitori:'fornitori',prodotti:'prodotti',prep:'prep_componenti',carichi:'carichi',movimenti:'movimenti',mpiatti_mov:'movimenti_piatti',servizi:'servizi',piatti:'piatti',pcomp:'piatto_componenti',menu:'menu',mpiatti:'menu_piatti',conte:'conte',crighe:'conte_righe',abbina:'cassa_abbinamenti'};
 const CAT_CUCINA = ['pesce','crostacei','carne','pasta','verdura','frutta','latticini','dispensa','pane','preparazione','pulizia','materiali','altro'];
-const CAT_SALA = ['bollicine','vino bianco','vino rosato','vino rosso','vino dolce','acqua','bibite','birra','distillati e amari','caffè e tè','tovagliato','materiali','pulizia','altro'];
+const CAT_SALA = ['bollicine','vino bianco','vino rosato','vino rosso','vino dolce','acqua','bibite','birra','distillati e amari','caffè e tè','pane e coperto','tovagliato','materiali','pulizia','altro'];
 let CATEGORIE = CAT_CUCINA;
-const NON_FOOD = new Set(['pulizia','materiali','tovagliato']);
+const NON_FOOD = new Set(['pulizia','materiali','tovagliato','pane e coperto']);
+const PREZZO_COPERTO = 4; /* € a persona, IVA compresa */
 const VINI = new Set(['bollicine','vino bianco','vino rosato','vino rosso','vino dolce']);
 /* reparto scelto su questo telefono o computer */
 let REP = (()=>{ try{ return localStorage.getItem('22reparto')==='sala' ? 'sala' : 'cucina'; }catch{ return 'cucina'; } })();
@@ -254,7 +255,7 @@ const ui = {
   tab:'servizio', user:null,
   svData: localISO(), svTurno: new Date().getHours()<16 ? 'pranzo' : 'cena',
   editProdotto:null, editFornitore:null, corrProd:null, stData:localISO(), stProd:'tutti', ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
-  coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:'', cfCat:'tutte'
+  coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:'', cfCat:'tutte', editTov:null
 };
 const OPEN = new Set((()=>{try{return JSON.parse(localStorage.getItem('22open2'))}catch{return null}})() || ['sv-linea','sv-porta','sv-vendite','ca-nuovo','ma-giac','sc-piatti','re-calc','re-storico','co-sintesi']);
 
@@ -373,10 +374,10 @@ const AIUTO_CAMPI = {
   'f-prodotto.annata':"L'anno in etichetta.",
   'f-prodotto.vitigni':"Come li vuoi scritti in carta dei vini.",
   'f-prodotto.zona':"La provincia o la zona, come in carta.",
-  'f-prodotto.pezzi_per_coperto':"Solo tovagliato: quanti pezzi usa un coperto (1 tovagliolo, 0,5 runner…). L'app li scarica quando salvi i coperti.",
+  'f-prodotto.pezzi_per_coperto':"Solo pane e tovagliato: quanti pezzi usa un coperto (1 tovagliolo, 0,5 runner…). L'app li scarica quando salvi i coperti.",
   'S:f-prodotto.unita':"Vino e distillati: millilitri, così si vendono anche a calice. Acqua, bibite, cialde, tovagliato: pezzi.",
   'S:f-prodotto.contenuto_conf':"Per le bottiglie: i ml di una bottiglia, es. 750. Così si conta a bottiglie.",
-  'S:f-prodotto.categoria':"Tovagliato, materiali e pulizia stanno fuori dal costo delle bevande.",
+  'S:f-prodotto.categoria':"Pane e coperto, tovagliato, materiali e pulizia stanno fuori dal costo delle bevande.",
   'S:f-carico.prezzo':"Il totale della riga in fattura, senza IVA.",
   'S:f-carico.comprato':"Quante bottiglie o pezzi.",
   'f-crea-art.prezzo_intero':"Il prezzo in carta della bottiglia o del pezzo.",
@@ -386,7 +387,7 @@ const AIUTO_CAMPI = {
 };
 /* spiegazioni della sala: sostituiscono quelle della cucina dove il senso cambia */
 const AIUTO_SALA = {
-  'ss-coperti':"Quanti coperti ha fatto il servizio. Salvandoli, l'app scarica anche il tovagliato usato (tovaglioli, runner) e calcola bevande e tovagliato a persona.",
+  'ss-coperti':"Quanti coperti ha fatto il servizio. Salvandoli, l'app scarica anche quello che il coperto usa (pane, tovaglioli, runner) e calcola bevande e tovagliato a persona.",
   'ss-vendite':"Il modo più veloce: «Importa dalla cassa» e carica il file delle vendite scaricato da Tiller. Altrimenti copia dalla cassa quanti articoli sono stati venduti: bottiglie, calici, acqua, caffè. Lascia vuoto quello che non si è venduto. Se sbagli, cancella la riga in «Movimenti del giorno».",
   'ss-omaggi':"Tutto quello che esce senza essere pagato: calici offerti, bottiglie rotte, vino che sa di tappo, caffè del personale. Se non si segna qui, alla conta risulta come merce mancante.",
   'sv-conta':"Serve a scoprire subito se qualcosa non torna. Le bottiglie aperte si contano a occhio: mezza bottiglia = 0,5.",
@@ -397,6 +398,13 @@ const AIUTO_SALA = {
   'co-sintesi':"Quante bevande sono state usate nel periodo e quante sono spiegate da venduto, omaggi, rotture e personale. Quello che resta è «non spiegato».",
   'co-confronto':"La merce comprata messa a confronto con quella che il venduto fa uscire. Mostra su quali bottiglie nasce la differenza.",
   'co-famiglie':"Per ogni famiglia (vino in bottiglia, calici, acqua, caffè…) quanto si è incassato e quanto è costata la merce. «Merce ogni 100 €» è il costo delle bevande.",
+  'tv-stato':"Quanti pezzi puliti ci sono secondo l'app e quanti sporchi aspettano la lavanderia. Il costo per coperto viene da prezzo a pezzo e pezzi per coperto.",
+  'tv-cons':"Quando la lavanderia porta i puliti: quanti pezzi per tipo e il prezzo a pezzo. È la spesa del tovagliato.",
+  'tv-rit':"Quando la lavanderia ritira gli sporchi: quanti pezzi per tipo. Non cambia i puliti, serve a controllare che i conti tornino.",
+  'tv-conta':"Contare i puliti in magazzino e in sala. Se ne mancano, sono pezzi che la lavanderia fa pagare.",
+  'tv-periodo':"Il riassunto delle date scelte: consegnati, usati con i coperti, ritirati, spesa e costo per coperto.",
+  'tv-pezzi':"I tipi di pezzo a noleggio (tovaglioli, runner, tovaglie…), quanto costano e quanti ne usa un coperto.",
+  'co-coperto':"Quanto incassate col coperto (4 € a persona) e quanto costa quello che il coperto consuma: pane, tovaglioli, runner. La differenza è il margine.",
   'co-tovagliato':"Il tovagliato è a noleggio: pezzi consegnati puliti, usati con i coperti, ritirati sporchi. Se gli sporchi ritirati sono meno degli usati, mancano pezzi.",
   'co-nonfood':"Candele, tovaglioli di carta, detersivi e simili. Non entrano nel costo delle bevande: si contano a fine mese.",
   'co-scarti':"Omaggi, rotture e consumo del personale, con il motivo.",
@@ -661,7 +669,7 @@ const td = (v, n) => `<td class="${n?'n':''}">${v}</td>`;
 /* ===== Render principale ===== */
 function render(){
   if(!ui.user){ renderLogin(); return; }
-  const tabs = SALA() ? [['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['schede','Articoli e prezzi'],['controllo','Controllo']]
+  const tabs = SALA() ? [['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['tovagliato','Tovagliato'],['schede','Articoli e prezzi'],['controllo','Controllo']]
                      : [['servizio','Servizio'],['carichi','Carichi'],['magazzino','Magazzino'],['schede','Schede e menu'],['rese','Rese'],['controllo','Controllo']];
   if(!tabs.some(t=>t[0]===ui.tab)) ui.tab='servizio';
   $('#app').innerHTML = `
@@ -676,7 +684,7 @@ function render(){
     </header>
     <nav class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')}</nav>
     <datalist id="dl-prodotti">${S.prodotti.filter(p=>p.attivo && isFood(p)).sort(byNome).map(p=>`<option value="${esc(p.nome)}"></option>`).join('')}</datalist>
-    <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo})[ui.tab]()}</main>`;
+    <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab})[ui.tab]()}</main>`;
   if(ui.tab==='servizio'){ aggiornaPorta(); aggiornaCoperti(); }
   if(ui.tab==='carichi'){ aggiornaCalcCarico(); aggiornaProduzione(); }
   if(ui.tab==='rese') aggiornaCalcolatrice();
@@ -780,10 +788,15 @@ function vServizio(){
       ...movI.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td(esc(P(m.prodotto_id)?.nome||'?'))}${td(esc(TIPI_MOV[m.tipo]))}${td(fq(m.prodotto_id,+m.quantita),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mov" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`)],
      'Nessun movimento in questo giorno.'), dataIt(ui.svData))}`;
 }
+function filtraConta(){
+  const t=($('#conta-cerca')?.value||'').trim().toLowerCase(), c=$('#conta-cat')?.value||''; let n=0;
+  document.querySelectorAll('tr[data-cnome]').forEach(r=>{ const ok=(!t||r.dataset.cnome.includes(t)) && (!c||r.dataset.ccat===c); r.style.display=ok?'':'none'; if(ok) n++; });
+  const el=$('#conta-n'); if(el) el.textContent = (t||c) ? n+' prodotti mostrati. Quelli nascosti non si toccano.' : '';
+}
 function aggiornaCoperti(){
   const f=$('#f-coperti'); const box=$('#cop-tov'); if(!f||!box) return;
-  const n=Math.round(parseN(f.elements['coperti'].value)); const tov=S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0);
-  box.innerHTML = n>0 && tov.length ? `<p class="nota" style="margin:0">Salvando escono: ${tov.map(p=>`<b>${fq(p, n * +p.pezzi_per_coperto)}</b> ${esc(p.nome.toLowerCase())}`).join(', ')}.</p>` : (n>0 ? '<p class="nota" style="margin:0">Nessun tovagliato con «pezzi per coperto»: non esce niente.</p>' : '');
+  const n=Math.round(parseN(f.elements['coperti'].value)); const tov=S.prodotti.filter(p=>p.attivo && +p.pezzi_per_coperto>0);
+  box.innerHTML = n>0 && tov.length ? `<p class="nota" style="margin:0">Salvando escono: ${tov.map(p=>`<b>${fq(p, n * +p.pezzi_per_coperto)}</b> ${esc(p.nome.toLowerCase())}`).join(', ')}.</p>` : (n>0 ? '<p class="nota" style="margin:0">Nessun prodotto con «pezzi per coperto»: non esce niente.</p>' : '');
 }
 function aggiornaPorta(){
   const f=$('#f-porta'); if(!f) return; const box=$('#porta-calc');
@@ -853,10 +866,6 @@ function vServizioSala(){
       <button class="btn" type="submit">Segna</button>
     </form>`)}
 
-  ${det('sv-conta','4 · Conta di fine servizio', `
-    <p class="nota" style="margin-top:12px">Dal telefono, un prodotto alla volta. Si scrive quello che c'è davvero, senza vedere quanto si aspetta l'app.</p>
-    ${CG ? rigaRipresa() : `<div style="margin-top:12px"><button class="btn" data-act="cg-apri">Inizia la conta</button></div>`}`, 'dal telefono')}
-
   ${det('sv-mov','Movimenti del giorno', tabella(['Ora','Cosa','Movimento','#Quantità','Motivo',''],
      [...movP.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td('<b>'+esc(PI(m.piatto_id)?.nome||'?')+'</b>')}${td(esc(TIPI_MOV[m.tipo]))}${td(num(m.porzioni),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mpiatto" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`),
       ...movI.map(m=>`<tr>${td(new Date(m.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}))}${td(esc(P(m.prodotto_id)?.nome||'?'))}${td(esc(TIPI_MOV[m.tipo]))}${td(fq(m.prodotto_id,+m.quantita),1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mov" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`)],
@@ -867,9 +876,69 @@ function vServizioSala(){
 async function scaricaTovagliato(sv, coperti){
   const {error} = await sb.from('movimenti').delete().eq('servizio_id', sv.id).eq('tipo','coperti'); if(error) throw error;
   if(!(coperti>0)) return;
-  const righe = S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0)
+  const righe = S.prodotti.filter(p=>p.attivo && +p.pezzi_per_coperto>0)
     .map(p=>({data:sv.data, prodotto_id:p.id, tipo:'coperti', da:'magazzino', quantita:+(coperti * +p.pezzi_per_coperto).toFixed(2), servizio_id:sv.id, motivo:`${coperti} coperti`}));
   if(righe.length) await ins('movimenti', righe);
+}
+
+/* ===== MAGAZZINO TOVAGLIATO (sala) ===== */
+function vTovagliatoTab(){
+  const pezzi = S.prodotti.filter(p=>p.categoria==='tovagliato' && p.attivo).sort(byNome);
+  const sommaMov = (pid, tipo) => S.movimenti.filter(m=>m.prodotto_id===pid && m.tipo===tipo).reduce((s,m)=>s + +m.quantita,0);
+  const prezzo = p => costo(p.id) || 0;
+  const perCop = pezzi.reduce((s,p)=>s + (+p.pezzi_per_coperto||0)*prezzo(p), 0);
+  const manca = pezzi.filter(p=>!prezzo(p)).map(p=>p.nome);
+  const ep = ui.editTov==='new' ? {nome:'',ultimo_prezzo:'',pezzi_per_coperto:''} : (ui.editTov ? P(ui.editTov) : null);
+  const inP = d => d>=ui.coDa && d<=ui.coA;
+  const coperti = S.servizi.filter(x=>inP(x.data) && x.coperti!=null).reduce((s,x)=>s + +x.coperti, 0);
+  const oggi = localISO();
+  const riga = (p, nome) => `<div class="vendita-riga"><span>${esc(p.nome)}</span><input name="${nome}_${p.id}" inputmode="decimal" placeholder="0" aria-label="${esc(p.nome)}"></div>`;
+  return `<h2 class="titolo">Tovagliato</h2>
+  <p class="intro">Il tovagliato è a noleggio: lo paghiamo a pezzo. La lavanderia consegna puliti, i coperti li usano, la lavanderia ritira gli sporchi.</p>
+  ${!pezzi.length?'<div class="avviso">Nessun pezzo ancora: aggiungilo qui sotto in «Pezzi e prezzi».</div>':''}
+  ${manca.length?`<div class="avviso" style="margin-bottom:12px">Manca il prezzo a pezzo: ${manca.map(esc).join(', ')}. Scrivilo in «Pezzi e prezzi».</div>`:''}
+
+  ${det('tv-stato','Situazione adesso', pezzi.length ? tabella(['Pezzo','#Per coperto','#Prezzo a pezzo','#Puliti da noi','#Sporchi da ritirare'],
+    pezzi.map(p=>{ const st=stock(p.id).mag; const sp=Math.max(0, sommaMov(p.id,'coperti') - sommaMov(p.id,'reso'));
+      return `<tr>${td(esc(p.nome))}${td(+p.pezzi_per_coperto>0?num(+p.pezzi_per_coperto,2):'—',1)}${td(prezzo(p)?eur(prezzo(p)):'—',1)}<td class="n" data-v="${st}"><b class="${st<0?'neg':''}">${num(st,0)}</b></td>${td(num(sp,0),1)}</tr>`; }))
+    + `<div class="calc"><div><span>Costo del tovagliato per coperto</span><b>${perCop?eur(perCop):'—'}</b></div></div>` : '<p class="vuoto">Nessun pezzo.</p>')}
+
+  ${det('tv-cons','Consegna della lavanderia (puliti)', pezzi.length ? `
+    <form id="f-tov-cons">
+      <div class="riga"><label>Giorno<input type="date" name="data" value="${oggi}"></label></div>
+      ${pezzi.map(p=>`<div class="vendita-riga"><span>${esc(p.nome)}</span><span style="display:flex;gap:6px"><input name="q_${p.id}" inputmode="decimal" placeholder="pezzi" aria-label="Pezzi ${esc(p.nome)}"><input name="p_${p.id}" inputmode="decimal" value="${prezzo(p)?fmtIn(prezzo(p)):''}" placeholder="€ a pezzo" aria-label="Prezzo a pezzo ${esc(p.nome)}"></span></div>`).join('')}
+      <div style="margin-top:12px"><button class="btn" type="submit">Carica la consegna</button></div>
+      <p class="nota">Per ogni pezzo: quanti ne sono arrivati e il prezzo a pezzo (IVA esclusa), come nella bolla o nella fattura della lavanderia.</p>
+    </form>` : '<p class="vuoto">Aggiungi prima i pezzi.</p>')}
+
+  ${det('tv-rit','Ritiro della lavanderia (sporchi)', pezzi.length ? `
+    <form id="f-tov-rit">
+      <div class="riga"><label>Giorno<input type="date" name="data" value="${oggi}"></label></div>
+      ${pezzi.map(p=>riga(p,'q')).join('')}
+      <div style="margin-top:12px"><button class="btn" type="submit">Segna il ritiro</button></div>
+    </form>` : '<p class="vuoto">Aggiungi prima i pezzi.</p>')}
+
+  ${det('tv-conta','Conta dei puliti', pezzi.length ? `
+    <form id="f-tov-conta">
+      <div class="riga"><label>Giorno<input type="date" name="data" value="${oggi}"></label></div>
+      ${pezzi.map(p=>riga(p,'c')).join('')}
+      <div style="margin-top:12px"><button class="btn" type="submit">Salva la conta</button></div>
+      <p class="nota">Scrivi solo i pezzi che hai contato. Le differenze con l'app restano registrate e si vedono nel Controllo.</p>
+    </form>` : '<p class="vuoto">Aggiungi prima i pezzi.</p>')}
+
+  ${det('tv-periodo','Resoconto del periodo', `
+    <div class="riga" style="margin-top:12px"><label>Dal<input type="date" id="co-da" value="${ui.coDa}"></label><label>Al<input type="date" id="co-a" value="${ui.coA}"></label><button class="btn sec" data-act="co-mese">Questo mese</button></div>
+    ${vTovagliato(inP, coperti)}`)}
+
+  ${det('tv-pezzi','Pezzi e prezzi', `
+    <div style="margin-top:12px"><button class="btn sec" data-act="tov-nuovo">+ Nuovo pezzo</button></div>
+    ${ep ? `<form id="f-tov-pezzo" class="griglia" data-id="${ui.editTov}">
+      <label>Nome<input name="nome" value="${esc(ep.nome)}" required placeholder="es. Tovaglie"></label>
+      <label>Prezzo a pezzo (€, IVA esclusa)<input name="prezzo" inputmode="decimal" value="${ep.ultimo_prezzo??''}"></label>
+      <label>Pezzi per coperto<input name="ppc" inputmode="decimal" value="${ep.pezzi_per_coperto??''}" placeholder="es. 1 o 0,5"></label>
+      <div class="riga"><button class="btn" type="submit">Salva</button><button class="btn sec" type="button" data-act="tov-chiudi">Chiudi</button></div>
+    </form>` : ''}
+    ${tabella(['Pezzo','#Per coperto','#Prezzo a pezzo',''], pezzi.map(p=>`<tr>${td(esc(p.nome))}${td(+p.pezzi_per_coperto>0?num(+p.pezzi_per_coperto,2):'—',1)}${td(prezzo(p)?eur(prezzo(p)):'—',1)}<td><button class="btn sec picc" data-act="tov-modifica" data-id="${p.id}">Modifica</button></td></tr>`), 'Nessun pezzo.')}`)}`;
 }
 
 /* ===== IMPORTAZIONE DAL FILE DELLA CASSA ===== */
@@ -1066,9 +1135,12 @@ function vMagazzino(){
     ${CG ? `<div style="margin-top:12px">${rigaRipresa()}</div>` : `<div class="riga" style="margin-top:12px"><button class="btn" data-act="cg-apri">Conta guidata dal telefono</button></div>`}
     <p class="nota" style="margin-top:12px">Oppure, dal computer, la tabella completa. Scrivi solo quello che hai contato, in kg, litri o pezzi. Le differenze vengono registrate e le vede Salvo nel Controllo.</p>
     <form id="f-conta">
-      <div class="riga"><label>Giorno della conta<input type="date" name="data" value="${localISO()}"></label></div>
+      <div class="riga"><label>Giorno della conta<input type="date" name="data" value="${localISO()}"></label>
+        <label>Cerca<input id="conta-cerca" placeholder="nome del prodotto…" autocomplete="off"></label>
+        <label>Famiglia<select id="conta-cat"><option value="">Tutte</option>${CATEGORIE.map(c=>`<option>${c}</option>`).join('')}</select></label></div>
+      <p class="nota" id="conta-n"></p>
       ${tabella(SALA()?['Prodotto','#Giacenza (app)','Contato']:['Prodotto','#Magazzino (app)','Contato','#Linea (app)','Contato'], S.prodotti.filter(p=>p.attivo).sort(byNome).map(p=>{ const st=stock(p.id); const uu=nomeBig(p);
-        return `<tr>${td(esc(p.nome))}${td(fq(p,st.mag),1)}<td><input name="m_${p.id}" inputmode="decimal" style="width:100px" placeholder="${uu}"></td>${SALA()?'':`${td(fq(p,st.lin),1)}<td><input name="l_${p.id}" inputmode="decimal" style="width:100px" placeholder="${uu}"></td>`}</tr>`; }), 'Nessun prodotto.')}
+        return `<tr data-cnome="${esc(p.nome.toLowerCase())}" data-ccat="${esc(p.categoria)}">${td(esc(p.nome)+(p.annata?` <small style="color:var(--grigio)">${esc(p.annata)}</small>`:''))}${td(fq(p,st.mag),1)}<td><input name="m_${p.id}" inputmode="decimal" style="width:100px" placeholder="${uu}"></td>${SALA()?'':`${td(fq(p,st.lin),1)}<td><input name="l_${p.id}" inputmode="decimal" style="width:100px" placeholder="${uu}"></td>`}</tr>`; }), 'Nessun prodotto.')}
       <div style="margin-top:12px"><button class="btn" type="submit">Salva la conta</button></div>
     </form>`)}
 
@@ -1090,7 +1162,7 @@ function vMagazzino(){
       <label>Annata (vini)<input name="annata" value="${esc(ep.annata||'')}" placeholder="es. 2023"></label>
       <label>Vitigni (vini)<input name="vitigni" value="${esc(ep.vitigni||'')}" placeholder="es. Carricante, Catarratto"></label>
       <label>Zona (vini)<input name="zona" value="${esc(ep.zona||'')}" placeholder="es. Catania"></label>
-      <label>Pezzi usati per coperto (tovagliato)<input name="pezzi_per_coperto" inputmode="decimal" value="${esc(ep.pezzi_per_coperto??'')}" placeholder="es. 1"></label>`
+      <label>Pezzi usati per coperto (pane, tovagliato)<input name="pezzi_per_coperto" inputmode="decimal" value="${esc(ep.pezzi_per_coperto??'')}" placeholder="es. 1"></label>`
       : `<label>Quantità da un lotto (solo preparazioni, g/ml/pz)<input name="resa_quantita" inputmode="decimal" value="${esc(ep.resa_quantita??'')}"></label>`}
       <label style="grid-column:1/-1">Note<input name="note" value="${esc(ep.note||'')}"></label>
       <div class="riga"><button class="btn" type="submit">Salva prodotto</button><button class="btn sec" type="button" data-act="chiudi-prodotto">Chiudi</button>
@@ -1344,7 +1416,7 @@ function vControllo(){
   const inP = d => d>=da && d<=a;
   const iniziale = valore(addDays(da,-1)), finale = valore(a);
   const comprato = S.carichi.filter(c=>c.tipo==='acquisto' && inP(c.data) && isFood(P(c.prodotto_id))).reduce((s,c)=>s + +c.prezzo, 0);
-  const nf = p => p && NON_FOOD.has(p.categoria) && p.categoria!=='tovagliato';
+  const nf = p => p && NON_FOOD.has(p.categoria) && !['tovagliato','pane e coperto'].includes(p.categoria);
   const nfIni = valore(addDays(da,-1), nf), nfFin = valore(a, nf);
   const nfComp = S.carichi.filter(c=>c.tipo==='acquisto' && inP(c.data) && nf(P(c.prodotto_id))).reduce((s,c)=>s + +c.prezzo, 0);
   const nfUsato = nfIni + nfComp - nfFin;
@@ -1407,6 +1479,8 @@ function vControllo(){
   ${det('co-confronto','Comprato e usato, prodotto per prodotto', vConfronto(da,a), 'dove nasce la differenza')}
 
   ${SALA()?det('co-famiglie','Incasso e costo per famiglia', vFamiglie(vendutiP)):''}
+
+  ${SALA()?det('co-coperto','Il coperto', vCoperto(inP, coperti)):''}
 
   ${SALA()?det('co-tovagliato','Tovagliato a noleggio', vTovagliato(inP, coperti)):''}
 
@@ -1511,6 +1585,24 @@ function vTovagliato(inP, coperti){
     + `<div class="calc"><div><span>Spesa lavanderia nel periodo</span><b>${eur(spesa)}</b></div><div><span>Tovagliato per coperto</span><b>${coperti?eur(spesa/coperti):'—'}</b></div></div>`
     + '<p class="nota">Ogni volta che salvi i coperti, l\'app toglie dai puliti i pezzi usati (per esempio 1 tovagliolo a coperto). «Sporchi da ritirare» sono gli usati non ancora ripresi dalla lavanderia: se il numero ritirato è più basso, mancano pezzi che la lavanderia ci fa pagare. Alla conta si contano solo i puliti.</p>';
 }
+/* il coperto: incasso a persona contro quello che consuma (tovagliato, pane…) */
+function vCoperto(inP, coperti){
+  const mm = S.movimenti.filter(m=>m.tipo==='coperti' && inP(m.data));
+  const perProd = new Map(); for(const m of mm) perProd.set(m.prodotto_id, (perProd.get(m.prodotto_id)||0) + +m.quantita);
+  const netto = PREZZO_COPERTO/1.10;
+  if(!coperti) return `<p class="vuoto">Nessun coperto salvato nel periodo.</p><p class="nota">Il coperto costa ${eur(PREZZO_COPERTO)} a persona (${eur(netto)} senza IVA).</p>`;
+  const righe = [...perProd.entries()].map(([pid,q])=>({p:P(pid), q, e:q*costo(pid)})).filter(r=>r.p).sort((a,b)=>b.e-a.e);
+  const tot = righe.reduce((s,r)=>s+r.e,0); const senzaPrezzo = righe.filter(r=>!costo(r.p.id)).map(r=>r.p.nome);
+  return `<div class="equazione">
+      <div class="blocco"><small>Incasso coperto a persona (senza IVA)</small><b>${eur(netto)}</b></div><span class="op">−</span>
+      <div class="blocco"><small>Costo a persona</small><b>${eur(tot/coperti)}</b></div><span class="op">=</span>
+      <div class="blocco fine"><small>Margine a persona</small><b>${eur(netto - tot/coperti)}</b></div>
+    </div>
+    ${tabella(['Cosa','#Pezzi usati','#Costo','#A persona'], righe.map(r=>`<tr>${td(esc(r.p.nome))}${td(fq(r.p,r.q),1)}${td(eur(r.e),1)}${td(eur(r.e/coperti),1)}</tr>`))}
+    <div class="calc"><div><span>Coperti nel periodo</span><b>${num(coperti,0)}</b></div><div><span>Incasso coperto (senza IVA)</span><b>${eur(netto*coperti)}</b></div><div><span>Margine del coperto nel periodo</span><b>${eur(netto*coperti - tot)}</b></div></div>
+    ${senzaPrezzo.length?`<div class="avviso">Senza prezzo, quindi costo a zero: ${senzaPrezzo.map(esc).join(', ')}.</div>`:''}
+    <p class="nota">I consumi vengono dai coperti salvati: ogni coperto usa i pezzi scritti nel prodotto (1 pane, 1 tovagliolo, mezzo runner…). Il coperto si calcola a ${eur(PREZZO_COPERTO)} IVA compresa.</p>`;
+}
 function vConteFatte(inP){
   const lista = S.conte.filter(c=>inP(c.data)).sort((x,y)=>(y.data+y.created_at).localeCompare(x.data+x.created_at));
   return tabella(['Giorno','Come','#Prodotti','#Differenze','#Valore',''], lista.map(c=>{
@@ -1545,7 +1637,7 @@ function cgGruppi(){
     {k:'vini', t:'Vini', s:'bollicine, bianchi, rosati, rossi, dolci', lista:food.filter(p=>VINI.has(p.categoria))},
     {k:'bevande', t:'Acqua, bibite e birre', s:'frigo e magazzino', lista:food.filter(p=>['acqua','bibite','birra'].includes(p.categoria))},
     {k:'caffe', t:'Caffè, distillati e amari', s:'cialde, tè, bottiglie aperte', lista:food.filter(p=>['caffè e tè','distillati e amari'].includes(p.categoria))},
-    {k:'tovagliato', t:'Tovagliato', s:'solo i pezzi puliti', lista:att.filter(p=>p.categoria==='tovagliato')},
+    {k:'tovagliato', t:'Tovagliato e pane', s:'solo i pezzi puliti, e il pane', lista:att.filter(p=>['tovagliato','pane e coperto'].includes(p.categoria))},
     {k:'vecchi', t:'Non contati da più di 7 giorni', s:'solo quelli che secondo l\'app ci sono', lista:food.filter(vecchi)},
     {k:'tutto', t:'Tutte le bevande', s:'tutti i prodotti attivi', lista:food},
     {k:'nonfood', t:'Materiali e pulizia', s:'di solito a fine mese', lista:att.filter(p=>['materiali','pulizia'].includes(p.categoria))}
@@ -1709,6 +1801,7 @@ document.addEventListener('input', e=>{
   if(e.target.closest('#f-porta')) aggiornaPorta();
   if(e.target.closest('#f-coperti')) aggiornaCoperti();
   if(e.target.name==='cerca') esitoCerca(e.target.form);
+  if(e.target.id==='conta-cerca' || e.target.id==='conta-cat') filtraConta();
   if(e.target.id==='pr-cerca'){ const t=e.target.value.trim().toLowerCase(); let n=0; document.querySelectorAll('tr[data-nome]').forEach(r=>{ const ok=!t||r.dataset.nome.includes(t); r.style.display=ok?'':'none'; if(ok) n++; }); const c=$('#pr-conta'); if(c) c.textContent=n+' prodotti'; }
   if(e.target.id==='sc-cerca'){ const t=e.target.value.trim().toLowerCase(); document.querySelectorAll('.card[data-nome]').forEach(c=>c.style.display = !t || c.dataset.nome.includes(t) ? '' : 'none'); }
   if(e.target.closest('#f-carico')) aggiornaCalcCarico();
@@ -1799,6 +1892,9 @@ document.addEventListener('click', e=>{
     case 'edit-menu': ui.editMenu=id; render(); break;
     case 'chiudi-menu': ui.editMenu=null; render(); break;
     case 'del-menu': if(confirm('Eliminare questo menu?')){ ui.editMenu=null; run(()=>del('menu',id),'Menu eliminato'); } break;
+    case 'tov-nuovo': ui.editTov='new'; OPEN.add('tv-pezzi'); render(); break;
+    case 'tov-modifica': ui.editTov=id; OPEN.add('tv-pezzi'); render(); document.getElementById('f-tov-pezzo')?.scrollIntoView({behavior:'smooth',block:'center'}); break;
+    case 'tov-chiudi': ui.editTov=null; render(); break;
     case 'imp-scegli': $('#imp-file')?.click(); break;
     case 'imp-annulla': IMP=null; render(); break;
     case 'del-conta': if(confirm('Cancellare questa conta? Si annullano anche le differenze che ha registrato.')) run(()=>del('conte',id),'Conta cancellata'); break;
@@ -1833,6 +1929,42 @@ document.addEventListener('submit', async e=>{
   const v = n => f.elements[n]?.value ?? '';
   const nOrNull = x => { const s=String(v(x)).trim(); return s==='' ? null : parseN(s); };
   switch(f.id){
+    case 'f-tov-pezzo': {
+      const nome=v('nome').trim(); if(!nome) return toast('Serve il nome.','err');
+      const row={nome, ultimo_prezzo:nOrNull('prezzo'), pezzi_per_coperto:nOrNull('ppc')};
+      const id=f.dataset.id;
+      run(async ()=>{ if(id==='new') await ins('prodotti',{...row, categoria:'tovagliato', unita:'pz', reparto:'sala', confezione:'pezzo', um_acquisto:'PZ', contenuto_conf:1, iva_pct:22}); else await upd('prodotti', id, row); ui.editTov=null; }, 'Pezzo salvato');
+      break;
+    }
+    case 'f-tov-cons': {
+      const data=v('data')||localISO(); const pezzi=S.prodotti.filter(p=>p.categoria==='tovagliato' && p.attivo);
+      const righe=pezzi.map(p=>({p, q:parseN(v('q_'+p.id)), pp:parseN(v('p_'+p.id))})).filter(x=>x.q>0);
+      if(!righe.length) return toast('Scrivi almeno un pezzo consegnato.','err');
+      if(righe.some(x=>!(x.pp>0))) return toast('Scrivi il prezzo a pezzo per ogni riga.','err');
+      run(async ()=>{
+        await ins('carichi', righe.map(x=>({data, prodotto_id:x.p.id, fornitore:nomeForn(x.p)||'lavanderia', peso_acquistato_g:x.q, peso_pulito_g:x.q, quantita:x.q, prezzo:+(x.q*x.pp).toFixed(2), costo_unitario:x.pp, tipo:'acquisto', note:'consegna lavanderia'})));
+        for(const x of righe) await upd('prodotti', x.p.id, {ultimo_prezzo:x.pp, ultima_quantita:x.q, data_ultima_fattura:data});
+      }, `Consegna caricata: ${righe.map(x=>num(x.q,0)+' '+x.p.nome.toLowerCase()).join(', ')}`);
+      break;
+    }
+    case 'f-tov-rit': {
+      const data=v('data')||localISO(); const pezzi=S.prodotti.filter(p=>p.categoria==='tovagliato' && p.attivo);
+      const righe=pezzi.map(p=>({p, q:parseN(v('q_'+p.id))})).filter(x=>x.q>0);
+      if(!righe.length) return toast('Scrivi almeno un pezzo ritirato.','err');
+      run(()=>ins('movimenti', righe.map(x=>({data, prodotto_id:x.p.id, tipo:'reso', quantita:x.q, motivo:'ritirato dalla lavanderia'}))), 'Ritiro segnato');
+      break;
+    }
+    case 'f-tov-conta': {
+      const data=v('data')||localISO(); const pezzi=S.prodotti.filter(p=>p.categoria==='tovagliato' && p.attivo);
+      const righe=[], mov=[];
+      for(const p of pezzi){ const raw=v('c_'+p.id); if(String(raw).trim()==='') continue; const q=Math.max(0,parseN(raw)); const att=stock(p.id).mag;
+        righe.push({prodotto_id:p.id, posto:'magazzino', atteso:+att.toFixed(3), contato:q}); const d=q-att; if(Math.abs(d)<0.5) continue;
+        mov.push(d>0?{data, prodotto_id:p.id, tipo:'rettifica', a:'magazzino', quantita:+d.toFixed(3), motivo:'conta tovagliato: trovato in più'}:{data, prodotto_id:p.id, tipo:'rettifica', da:'magazzino', quantita:+(-d).toFixed(3), motivo:'conta tovagliato: manca'}); }
+      if(!righe.length) return toast('Scrivi almeno un pezzo contato.','err');
+      run(async ()=>{ const c=await insOne('conte',{data, tipo:'completa', cosa:'tovagliato', reparto:REP}); await ins('conte_righe', righe.map(r=>({...r, conta_id:c.id}))); if(mov.length) await ins('movimenti', mov.map(m=>({...m, conta_id:c.id}))); },
+        mov.length ? `Conta salvata: ${mov.length} differenz${mov.length===1?'a':'e'}` : 'Conta salvata: i conti tornano');
+      break;
+    }
     case 'f-import': {
       if(!IMP) return;
       const mancano = IMP.voci.filter(v=>!v.pid);
@@ -1857,9 +1989,9 @@ document.addEventListener('submit', async e=>{
     case 'f-coperti': {
       const n=Math.round(parseN(v('coperti'))); if(n<0) return;
       const cop = v('coperti').trim()==='' ? null : n;
-      const tov = S.prodotti.filter(p=>p.attivo && p.categoria==='tovagliato' && +p.pezzi_per_coperto>0);
+      const tov = S.prodotti.filter(p=>p.attivo && +p.pezzi_per_coperto>0);
       run(async ()=>{ const sv=await ensureServizio(); await upd('servizi', sv.id, {coperti:cop}); await scaricaTovagliato(sv, cop); },
-        cop && tov.length ? `Coperti salvati. Tovagliato scaricato: ${tov.map(p=>fq(p, cop * +p.pezzi_per_coperto)+' '+p.nome.toLowerCase()).join(', ')}` : 'Coperti salvati');
+        cop && tov.length ? `Coperti salvati. Scaricati: ${tov.map(p=>fq(p, cop * +p.pezzi_per_coperto)+' '+p.nome.toLowerCase()).join(', ')}` : 'Coperti salvati');
       break;
     }
     case 'f-vendite-sala': {
