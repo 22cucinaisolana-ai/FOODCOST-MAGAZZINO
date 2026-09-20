@@ -91,6 +91,9 @@ tr.tot td{font-weight:800;border-top:2px solid var(--oliva-200)}
 .vuoto{color:var(--grigio);font-size:15px;padding:10px 0}
 .th-ord{border:0;background:none;font:inherit;font-size:12px;font-weight:700;color:var(--grigio);cursor:pointer;padding:0;white-space:nowrap}
 .th-ord:hover,.th-ord.on{color:var(--oliva-700)}
+.tabella th.ordinabile{cursor:pointer;user-select:none}
+.tabella th.ordinabile:hover{color:var(--oliva-700)}
+.tabella th.su::after{content:" ▲"} .tabella th.giu::after{content:" ▼"}
 .testa{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:6px 2px 12px}
 .testa h2{margin:0;font-size:24px}
 .cerca{width:100%;margin-bottom:6px}
@@ -174,7 +177,7 @@ const addDays = (iso,n) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getD
 const ui = {
   tab:'servizio', user:null,
   svData: localISO(), svTurno: new Date().getHours()<16 ? 'pranzo' : 'cena',
-  editProdotto:null, editFornitore:null, ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
+  editProdotto:null, editFornitore:null, corrProd:null, stData:localISO(), stProd:'tutti', ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
   coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:''
 };
 const OPEN = new Set((()=>{try{return JSON.parse(localStorage.getItem('22open2'))}catch{return null}})() || ['sv-linea','sv-porta','sv-vendite','ca-nuovo','ma-giac','sc-piatti','re-calc','re-storico','co-sintesi']);
@@ -309,7 +312,35 @@ function optPiatti(filter=()=>true, extra){
 }
 function tabella(head, rows, emptyMsg='Niente da mostrare.'){
   if(!rows.length) return `<p class="vuoto">${emptyMsg}</p>`;
-  return `<div class="tabella"><table><thead><tr>${head.map(h=>`<th class="${h.startsWith('#')?'n':''}">${esc(h.replace(/^#/,''))}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  return `<div class="tabella"><table><thead><tr>${head.map((h,i)=>{ const l=h.replace(/^#/,''); return `<th class="${h.startsWith('#')?'n':''}${l?' ordinabile':''}" data-col="${i}">${esc(l)}</th>`; }).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+}
+/* ordinamento di qualsiasi tabella cliccando sul titolo della colonna */
+const MESI = {gen:1,feb:2,mar:3,apr:4,mag:5,giu:6,lug:7,ago:8,set:9,ott:10,nov:11,dic:12};
+function chiaveCella(cell){
+  if(!cell) return {t:2,v:''};
+  if(cell.dataset.v!=null) return {t:0,v:+cell.dataset.v};
+  const txt = cell.textContent.replace(/\s+/g,' ').trim();
+  const d = txt.match(/\b(\d{1,2}) (gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\b/i);
+  if(d) return {t:0, v:MESI[d[2].toLowerCase()]*100 + +d[1]};
+  const m = txt.replace(/−/g,'-').match(/-?\d[\d.]*(,\d+)?/);
+  if(m && /^[-−]?[\d.,]+/.test(txt.replace(/^(mancano|in più|\+)\s*/,''))){
+    let n = parseFloat(m[0].replace(/\./g,'').replace(',','.'));
+    if(/\d\s*(kg|L)\b/.test(txt)) n *= 1000;
+    return {t:0, v:n};
+  }
+  return {t:1, v:txt.toLowerCase()};
+}
+function ordinaTabella(th){
+  const table = th.closest('table'); const col = +th.dataset.col; const tb = table.tBodies[0];
+  const dir = th.dataset.dir==='1' ? -1 : 1;
+  table.querySelectorAll('th.ordinabile').forEach(x=>{ delete x.dataset.dir; x.classList.remove('su','giu'); });
+  th.dataset.dir = dir===1 ? '1' : '-1'; th.classList.add(dir===1?'su':'giu');
+  const righe = [...tb.rows].filter(r=>!r.classList.contains('tot') && r.cells.length>col);
+  const fisse = [...tb.rows].filter(r=>!righe.includes(r));
+  righe.sort((a,b)=>{ const x=chiaveCella(a.cells[col]), y=chiaveCella(b.cells[col]);
+    if(x.t!==y.t) return x.t-y.t;
+    return (x.t===0 ? x.v-y.v : String(x.v).localeCompare(String(y.v),'it',{numeric:true}))*dir; });
+  righe.concat(fisse).forEach(r=>tb.appendChild(r));
 }
 const td = (v, n) => `<td class="${n?'n':''}">${v}</td>`;
 
@@ -527,8 +558,19 @@ function vMagazzino(){
   const prodotti = S.prodotti.filter(p=>p.attivo && (ui.catFiltro==='tutte' || p.categoria===ui.catFiltro)).sort(byNome);
   let tot=0;
   const righe = prodotti.map(p=>{ const st=stock(p.id); const c=costo(p.id); const v=(st.mag+st.lin)*c; tot+=v;
-    return `<tr>${td(esc(p.nome))}${td(esc(p.categoria))}${td(`<span class="${st.mag<0?'neg':''}">${fq(p,st.mag)}</span>`,1)}${td(`<span class="${st.lin<0?'neg':''}">${fq(p,st.lin)}</span>`,1)}${td(c?fc(p,c):'—',1)}${td(eur(v),1)}</tr>`; });
-  if(righe.length) righe.push(`<tr class="tot"><td colspan="5">Valore totale</td>${td(eur(tot),1)}</tr>`);
+    return `<tr>${td(esc(p.nome))}${td(esc(p.categoria))}<td class="n" data-v="${st.mag}"><span class="${st.mag<0?'neg':''}">${fq(p,st.mag)}</span></td><td class="n" data-v="${st.lin}"><span class="${st.lin<0?'neg':''}">${fq(p,st.lin)}</span></td>${td(c?fc(p,c):'—',1)}<td class="n" data-v="${v}">${eur(v)}</td><td style="white-space:nowrap"><button class="btn sec picc" data-act="corr-prod" data-id="${p.id}">Correggi</button> <button class="btn sec picc" data-act="stor-prod" data-id="${p.id}">Storico</button></td></tr>`; });
+  if(righe.length) righe.push(`<tr class="tot"><td colspan="5">Valore totale</td>${td(eur(tot),1)}<td></td></tr>`);
+  const pc = ui.corrProd ? P(ui.corrProd) : null;
+  const formCorr = pc ? (()=>{ const st=stock(pc.id); const uu=U[pc.unita].big; return `<div class="pannello" id="box-corr"><div class="pannello-titolo">Correggi la giacenza di ${esc(pc.nome)}</div>
+    <p class="nota" style="margin:0">Scrivi quanto c'è davvero. L'app registra la differenza con il motivo, così resta traccia.</p>
+    <form id="f-corr" class="griglia" data-id="${pc.id}">
+      <label>Giorno<input type="date" name="data" value="${localISO()}"></label>
+      <label>Magazzino: adesso ${fq(pc,st.mag)} → nuovo (${uu})<input name="mag" inputmode="decimal" placeholder="lascia vuoto se giusto"></label>
+      <label>Linea: adesso ${fq(pc,st.lin)} → nuovo (${uu})<input name="lin" inputmode="decimal" placeholder="lascia vuoto se giusto"></label>
+      <label>Motivo<input name="motivo" placeholder="es. errore di ieri"></label>
+      <div class="riga"><button class="btn" type="submit">Salva correzione</button><button class="btn sec" type="button" data-act="corr-chiudi">Chiudi</button></div>
+    </form>
+    <p class="nota">Se invece vuoi <b>annullare</b> un carico o un movimento sbagliato (per esempio quelli di ieri), usa «Storico»: cancellandolo la giacenza torna com'era.</p></div>`; })() : '';
 
   const ep = ui.editProdotto==='new' ? {nome:'',categoria:'altro',unita:'g',fornitore_id:'',confezione:'',um_acquisto:'',contenuto_conf:'',ultimo_prezzo:'',iva_pct:'',ultima_quantita:'',resa_quantita:'',note:''} : (ui.editProdotto ? P(ui.editProdotto) : null);
 
@@ -536,7 +578,10 @@ function vMagazzino(){
   <p class="intro">Tutto in grammi, millilitri o pezzi. Qui si vedono le giacenze, si fa la conta e si gestiscono prodotti e fornitori.</p>
   ${det('ma-giac','Giacenze', `
     <div class="riga"><label>Categoria<select id="ma-cat"><option value="tutte">Tutte</option>${CATEGORIE.map(c=>`<option ${ui.catFiltro===c?'selected':''}>${c}</option>`).join('')}</select></label></div>
-    ${tabella(['Prodotto','Categoria','#Magazzino','#Linea','#Costo vero','#Valore'], righe, 'Nessun prodotto.')}`)}
+    ${formCorr}
+    ${tabella(['Prodotto','Categoria','#Magazzino','#Linea','#Costo vero','#Valore',''], righe, 'Nessun prodotto.')}`)}
+
+  ${det('ma-storico','Storico: carichi e movimenti', vStorico())}
 
   ${det('ma-conta','Conta', `
     <p class="nota" style="margin-top:12px">Scrivi solo quello che hai contato, in kg, litri o pezzi. Le differenze vengono registrate e le vede Salvo nel Controllo.</p>
@@ -589,6 +634,29 @@ function vMagazzino(){
       <div class="riga"><button class="btn" type="submit">Salva fornitore</button><button class="btn sec" type="button" data-act="chiudi-fornitore">Chiudi</button></div>
     </form>`; })() : ''}
     ${tabellaOrd([['Fornitore','nome'],['Città','citta'],['Pagamento','pagamento'],['Telefono',null],['#Prodotti','prodotti'],['',null]], ui.ordForn, 'ord-forn', ordina(S.fornitori, ui.ordForn, KEY_FORN).map(f=>`<tr>${td(esc(f.nome))}${td(esc(f.citta||''))}${td(esc(f.pagamento||''))}${td(esc(f.telefono||''))}${td(S.prodotti.filter(p=>p.fornitore_id===f.id).length,1)}<td><button class="btn sec picc" data-act="filtra-forn" data-id="${f.id}">Prodotti</button> <button class="btn sec picc" data-act="edit-fornitore" data-id="${f.id}">Modifica</button></td></tr>`), 'Nessun fornitore ancora.')}`)}`;
+}
+function vStorico(){
+  const d = ui.stData, pid = ui.stProd;
+  const okP = x => pid==='tutti' || x.prodotto_id===pid;
+  const okD = x => !d || x.data===d;
+  const car = S.carichi.filter(c=>okP(c)&&okD(c));
+  const movP = S.mpiatti_mov.filter(m=>okD(m) && (pid==='tutti' || compPiatto(m.piatto_id).some(c=>c.prodotto_id===pid)));
+  const movI = S.movimenti.filter(m=>okP(m)&&okD(m) && (!m.movimento_piatto_id || pid!=='tutti'));
+  const ora = x => new Date(x.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+  const righe = [
+    ...car.map(c=>({k:c.data+c.created_at, h:`<tr>${td(dataIt(c.data))}${td(ora(c))}${td('<b>Carico</b>'+(c.tipo==='produzione'?' (produzione)':''))}${td(esc(P(c.prodotto_id)?.nome||'?'))}${td('+'+fq(c.prodotto_id,+c.quantita),1)}${td(eur(+c.prezzo),1)}<td><button class="x" data-act="del-carico" data-id="${c.id}" aria-label="Cancella">✕</button></td></tr>`})),
+    ...movP.map(m=>({k:m.data+m.created_at, h:`<tr>${td(dataIt(m.data))}${td(ora(m))}${td(esc(TIPI_MOV[m.tipo]))}${td('<b>'+esc(PI(m.piatto_id)?.nome||'?')+'</b> <small style="color:var(--grigio)">(piatto, scarica tutti i suoi ingredienti)</small>')}${td(num(m.porzioni)+' porz.',1)}${td(esc(m.motivo||''))}<td><button class="x" data-act="del-mpiatto" data-id="${m.id}" aria-label="Cancella">✕</button></td></tr>`})),
+    ...movI.map(m=>({k:m.data+m.created_at, h:`<tr>${td(dataIt(m.data))}${td(ora(m))}${td(esc(TIPI_MOV[m.tipo]))}${td(esc(P(m.prodotto_id)?.nome||'?')+(m.movimento_piatto_id?' <small style="color:var(--grigio)">(da piatto: si cancella dal piatto)</small>':''))}${td((m.a&&!m.da?'+':m.da&&!m.a?'−':'')+fq(m.prodotto_id,+m.quantita)+(m.da&&m.a?` (${m.da} → ${m.a})`:''),1)}${td(esc(m.motivo||''))}<td>${m.movimento_piatto_id?'':`<button class="x" data-act="del-mov" data-id="${m.id}" aria-label="Cancella">✕</button>`}</td></tr>`}))
+  ].sort((a,b)=>b.k.localeCompare(a.k)).map(x=>x.h);
+  const n = car.length + movP.length + S.movimenti.filter(m=>okD(m)&&!m.movimento_piatto_id&&okP(m)).length;
+  return `<div class="riga" style="margin-top:12px">
+      <label>Giorno<input type="date" id="st-data" value="${d||''}"></label>
+      <button class="btn sec" data-act="st-ieri">Ieri</button><button class="btn sec" data-act="st-oggi">Oggi</button><button class="btn sec" data-act="st-tutti">Tutti i giorni</button>
+      <label>Prodotto<select id="st-prod"><option value="tutti">Tutti</option>${S.prodotti.slice().sort(byNome).map(p=>`<option value="${p.id}" ${pid===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}</select></label>
+    </div>
+    ${tabella(['Giorno','Ora','Cosa','Prodotto o piatto','#Quantità','Prezzo / motivo',''], righe, 'Nessun carico o movimento con questi filtri.')}
+    ${d && pid==='tutti' && n ? `<div style="margin-top:12px"><button class="btn rosso" data-act="st-cancella-giorno">Cancella tutti i carichi e movimenti del ${esc(dataIt(d))}</button></div>` : ''}
+    <p class="nota">Cancellare un carico o un movimento lo annulla: la giacenza torna come se non fosse mai stato registrato. Le correzioni con «Correggi» invece restano visibili come differenze.</p>`;
 }
 function vRicettaPrep(p){
   const righe = S.prep.filter(r=>r.prep_id===p.id);
@@ -849,6 +917,8 @@ document.addEventListener('change', e=>{
   if(id==='sv-data'){ ui.svData=e.target.value; render(); }
   if(id==='sv-turno'){ ui.svTurno=e.target.value; render(); }
   if(id==='ma-cat'){ ui.catFiltro=e.target.value; render(); }
+  if(id==='st-data'){ ui.stData=e.target.value; render(); }
+  if(id==='st-prod'){ ui.stProd=e.target.value; render(); }
   if(id==='pr-forn'){ ui.filtroForn=e.target.value; render(); }
   if(id==='pr-cat'){ ui.filtroCatProd=e.target.value; render(); }
   if(id==='pr-ord'){ ui.ordProd={k:e.target.value, d:1}; render(); }
@@ -860,6 +930,7 @@ document.addEventListener('change', e=>{
   if(e.target.name==='cerca') esitoCerca(e.target.form);
 });
 document.addEventListener('click', e=>{
+  const thO = e.target.closest('th.ordinabile'); if(thO){ ordinaTabella(thO); return; }
   const t = e.target.closest('[data-tab],[data-act]'); if(!t) return;
   if(t.dataset.tab){ ui.tab=t.dataset.tab; render(); window.scrollTo(0,0); return; }
   const act=t.dataset.act, id=t.dataset.id;
@@ -872,6 +943,22 @@ document.addEventListener('click', e=>{
     case 'edit-prodotto': ui.editProdotto=id; render(); $('#f-prodotto')?.scrollIntoView({behavior:'smooth',block:'center'}); break;
     case 'chiudi-prodotto': ui.editProdotto=null; render(); break;
     case 'toggle-prodotto': { const p=P(id); run(()=>upd('prodotti',id,{attivo:!p.attivo}), p.attivo?'Prodotto disattivato':'Prodotto riattivato'); break; }
+    case 'corr-prod': ui.corrProd=id; render(); document.getElementById('box-corr')?.scrollIntoView({behavior:'smooth',block:'center'}); break;
+    case 'corr-chiudi': ui.corrProd=null; render(); break;
+    case 'stor-prod': ui.stProd=id; ui.stData=''; OPEN.add('ma-storico'); render(); document.getElementById('ma-storico')?.scrollIntoView({behavior:'smooth'}); break;
+    case 'st-ieri': ui.stData=addDays(localISO(),-1); render(); break;
+    case 'st-oggi': ui.stData=localISO(); render(); break;
+    case 'st-tutti': ui.stData=''; render(); break;
+    case 'st-cancella-giorno': {
+      const d=ui.stData; if(!d) break;
+      const nc=S.carichi.filter(c=>c.data===d).length, np=S.mpiatti_mov.filter(m=>m.data===d).length, ni=S.movimenti.filter(m=>m.data===d&&!m.movimento_piatto_id).length;
+      if(!confirm(`Cancellare TUTTO il ${dataIt(d)}? ${nc} carichi, ${np} movimenti di piatti, ${ni} movimenti di ingredienti. Non si può annullare.`)) break;
+      run(async ()=>{
+        for(const [t,f] of [['movimenti_piatti',null],['carichi',null]]){ const {error}=await sb.from(t).delete().eq('data', d); if(error) throw error; }
+        const {error}=await sb.from('movimenti').delete().eq('data', d).is('movimento_piatto_id', null); if(error) throw error;
+      }, `Cancellato tutto il ${dataIt(d)}`);
+      break;
+    }
     case 'ord-prod': { const k=t.dataset.k; ui.ordProd = ui.ordProd.k===k ? {k, d:-ui.ordProd.d} : {k, d:1}; render(); break; }
     case 'ord-forn': { const k=t.dataset.k; ui.ordForn = ui.ordForn.k===k ? {k, d:-ui.ordForn.d} : {k, d:1}; render(); break; }
     case 'pr-dir': ui.ordProd = {k:ui.ordProd.k, d:-ui.ordProd.d}; render(); break;
@@ -1007,6 +1094,18 @@ document.addEventListener('submit', async e=>{
         if(id==='new'){ const d=await insOne('prodotti', row); ui.editProdotto = row.categoria==='preparazione' ? d.id : null; }
         else await upd('prodotti', id, row);
       }, 'Prodotto salvato');
+      break;
+    }
+    case 'f-corr': {
+      const p=P(f.dataset.id); if(!p) return; const data=v('data')||localISO(); const mul=U[p.unita].mul; const st=stock(p.id); const mov=[];
+      const motivo = v('motivo').trim() || 'correzione manuale';
+      for(const [k,posto,att] of [['mag','magazzino',st.mag],['lin','linea',st.lin]]){
+        const raw=v(k); if(String(raw).trim()==='') continue;
+        const diff=parseN(raw)*mul-att; if(Math.abs(diff)<0.5) continue;
+        mov.push(diff>0 ? {data, prodotto_id:p.id, tipo:'rettifica', a:posto, quantita:+diff.toFixed(3), motivo} : {data, prodotto_id:p.id, tipo:'rettifica', da:posto, quantita:+(-diff).toFixed(3), motivo});
+      }
+      if(!mov.length) return toast('Nessuna differenza da correggere.');
+      run(async ()=>{ await ins('movimenti', mov); ui.corrProd=null; }, `Giacenza di ${p.nome} corretta`);
       break;
     }
     case 'f-fornitore': {
