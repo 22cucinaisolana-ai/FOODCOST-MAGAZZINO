@@ -137,6 +137,7 @@ body:not(.aiuto-on) .aiuto, body:not(.aiuto-on) .aiuto-campo{display:none}
 @media (max-width:600px){ .top .lungo{display:none} .top .corto{display:inline} header.top{gap:10px} }
 /* importazione dalla cassa */
 .imp-sel{min-width:220px;width:100%}
+.chip{white-space:nowrap}
 .imp-da{background:var(--ambra-bg)}
 /* conta guidata (telefono) */
 #cg{display:none}
@@ -205,6 +206,7 @@ const CAT_CUCINA = ['pesce','crostacei','carne','pasta','verdura','frutta','latt
 const CAT_SALA = ['bollicine','vino bianco','vino rosato','vino rosso','vino dolce','acqua','bibite','birra','distillati e amari','caffè e tè','pane e coperto','tovagliato','materiali','pulizia','altro'];
 let CATEGORIE = CAT_CUCINA;
 const NON_FOOD = new Set(['pulizia','materiali','tovagliato','pane e coperto']);
+const DOMINIO_UTENTI = 'utenti.22cucinaisolana.it'; /* chi entra con il solo nome: francesca → francesca@utenti.22cucinaisolana.it */
 const PREZZO_COPERTO = 4; /* € a persona, IVA compresa */
 const VINI = new Set(['bollicine','vino bianco','vino rosato','vino rosso','vino dolce']);
 /* reparto scelto su questo telefono o computer */
@@ -252,7 +254,7 @@ const TIPI_MOV = {omaggio:'Omaggio', reso:'Reso', coperti:'Usato per i coperti',
 const localISO = (d=new Date()) => new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 const addDays = (iso,n) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return localISO(d); };
 const ui = {
-  tab:'servizio', user:null,
+  tab:'home', user:null,
   svData: localISO(), svTurno: new Date().getHours()<16 ? 'pranzo' : 'cena',
   editProdotto:null, editFornitore:null, corrProd:null, stData:localISO(), stProd:'tutti', ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
   coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:'', cfCat:'tutte', editTov:null
@@ -337,6 +339,7 @@ const AIUTO_CAMPI = {
   'f-prodotto.contenuto_conf':"Quanti g, ml o pezzi ci sono in 1 unità della fattura. Senza, il costo non si calcola.",
   'f-prodotto.ultimo_prezzo':"Si aggiorna da solo con i carichi.",
   'f-prodotto.iva_pct':"Di solito 4, 10 o 22.",
+  'f-prodotto.scorta_minima':"Sotto questo numero la Home avvisa di riordinare. Se lo lasci vuoto, l'app avvisa quando restano pochi giorni in base a quanto si consuma.",
   'f-prodotto.ultima_quantita':"Si aggiorna da solo con i carichi.",
   'f-prodotto.resa_quantita':"Solo per salse e basi: quanto viene da una ricetta.",
   'f-prodotto.note':"Facoltativo.",
@@ -669,22 +672,22 @@ const td = (v, n) => `<td class="${n?'n':''}">${v}</td>`;
 /* ===== Render principale ===== */
 function render(){
   if(!ui.user){ renderLogin(); return; }
-  const tabs = SALA() ? [['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['tovagliato','Tovagliato'],['schede','Articoli e prezzi'],['controllo','Controllo']]
-                     : [['servizio','Servizio'],['carichi','Carichi'],['magazzino','Magazzino'],['schede','Schede e menu'],['rese','Rese'],['controllo','Controllo']];
-  if(!tabs.some(t=>t[0]===ui.tab)) ui.tab='servizio';
+  const tabs = SALA() ? [['home','Home'],['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['tovagliato','Tovagliato'],['schede','Articoli e prezzi'],['controllo','Controllo']]
+                     : [['home','Home'],['servizio','Servizio'],['carichi','Carichi'],['magazzino','Magazzino'],['schede','Schede e menu'],['rese','Rese'],['controllo','Controllo']];
+  if(!tabs.some(t=>t[0]===ui.tab)) ui.tab='home';
   $('#app').innerHTML = `
     <header class="top">
       <div><div class="marchio">22</div></div>
       <div class="rep-switch" role="group" aria-label="Reparto">${[['cucina','Cucina'],['sala','Sala']].map(([k,l])=>`<button data-act="rep" data-r="${k}" aria-pressed="${REP===k}">${l}</button>`).join('')}</div>
       <div class="marchio-sub rep-sub">${SALA()?'Sala e bevande':'Cucina e food cost'}<br>Metodo 22</div>
       <div class="spazio"></div>
-      <div class="utente">${esc(ui.user.email)}</div>
+      <div class="utente">${esc(ui.user.email.endsWith("@"+DOMINIO_UTENTI) ? ui.user.email.split("@")[0] : ui.user.email)}</div>
       <button data-act="aiuto" class="${AIUTO_ON?'acceso':''}" aria-pressed="${AIUTO_ON}" title="Mostra o nasconde le spiegazioni" style="white-space:nowrap"><span class="lungo">Spiegazioni</span><span class="corto">Aiuto</span> ${AIUTO_ON?'sì':'no'}</button>
       <button data-act="esci">Esci</button>
     </header>
     <nav class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')}</nav>
     <datalist id="dl-prodotti">${S.prodotti.filter(p=>p.attivo && isFood(p)).sort(byNome).map(p=>`<option value="${esc(p.nome)}"></option>`).join('')}</datalist>
-    <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab})[ui.tab]()}</main>`;
+    <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab,home:vHome})[ui.tab]()}</main>`;
   if(ui.tab==='servizio'){ aggiornaPorta(); aggiornaCoperti(); }
   if(ui.tab==='carichi'){ aggiornaCalcCarico(); aggiornaProduzione(); }
   if(ui.tab==='rese') aggiornaCalcolatrice();
@@ -694,7 +697,7 @@ function renderLogin(msg=''){
   $('#app').innerHTML = `<div class="login">
     <div class="marchio">22</div><div style="font-weight:700;margin-top:4px">Cucina e sala</div>
     <form id="f-login">
-      <label>Email<input name="email" type="email" autocomplete="username" required></label>
+      <label>Nome utente o email<input name="email" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="es. francesca"></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <button class="btn" type="submit">Entra</button>
       ${msg?`<div class="errore">${esc(msg)}</div>`:''}
@@ -879,6 +882,84 @@ async function scaricaTovagliato(sv, coperti){
   const righe = S.prodotti.filter(p=>p.attivo && +p.pezzi_per_coperto>0)
     .map(p=>({data:sv.data, prodotto_id:p.id, tipo:'coperti', da:'magazzino', quantita:+(coperti * +p.pezzi_per_coperto).toFixed(2), servizio_id:sv.id, motivo:`${coperti} coperti`}));
   if(righe.length) await ins('movimenti', righe);
+}
+
+/* ===== HOME ===== */
+const GIORNI_ALLARME = () => SALA() ? 7 : 3;   /* avvisa quando restano meno di questi giorni */
+const TIPI_USCITA = new Set(['venduto','surplus','uso_produzione','scarto','pasto_personale','omaggio','coperti']);
+function consumoGiorno(pid, giorni=14){
+  const da = addDays(localISO(), -giorni);
+  return S.movimenti.filter(m=>m.prodotto_id===pid && TIPI_USCITA.has(m.tipo) && m.data>da).reduce((s,m)=>s + +m.quantita,0) / giorni;
+}
+function allarmiScorta(){
+  const out = [];
+  for(const p of S.prodotti.filter(p=>p.attivo && p.categoria!=='preparazione')){
+    const st = stock(p.id); const q = st.mag + st.lin; const c = consumoGiorno(p.id); const min = p.scorta_minima!=null ? +p.scorta_minima : null;
+    const giorni = c>0 ? q/c : null;
+    let perche = null, gravita = 0;
+    if(q<=0.5 && (c>0 || min!=null)){ perche = 'finito'; gravita = 3; }
+    else if(min!=null && q<=min){ perche = 'sotto scorta (min '+fq(p,min)+')'; gravita = 2; }
+    else if(min==null && giorni!=null && giorni<=GIORNI_ALLARME()){ perche = giorni<1 ? 'finisce oggi' : `basta per ${num(giorni,0)} giorn${Math.round(giorni)===1?'o':'i'}`; gravita = giorni<1?2:1; }
+    if(perche) out.push({p, q, giorni, perche, gravita});
+  }
+  return out.sort((a,b)=>b.gravita-a.gravita || (a.giorni??0)-(b.giorni??0));
+}
+function vHome(){
+  const oggi = localISO(), ieri = addDays(oggi,-1), da7 = addDays(oggi,-6), inizioMese = oggi.slice(0,8)+'01';
+  const all = allarmiScorta();
+  const perForn = new Map(); for(const a of all){ const k=nomeForn(a.p)||'Senza fornitore'; if(!perForn.has(k)) perForn.set(k,[]); perForn.get(k).push(a); }
+  const valore = S.prodotti.reduce((s,p)=>{ const st=stock(p.id); const q=st.mag+st.lin; return s + (q>0 ? q*costo(p.id) : 0); }, 0);
+  const negativi = S.prodotti.filter(p=>p.attivo && (stock(p.id).mag+stock(p.id).lin)<-0.5).length;
+  const senzaPrezzo = S.prodotti.filter(p=>p.attivo && !costo(p.id) && p.categoria!=='preparazione').length;
+  const senzaScheda = S.piatti.filter(p=>p.attivo && !compPiatto(p.id).length).length;
+  const ultimaC = S.conte.map(c=>c.data).sort().pop();
+  const vendIn = (a,b) => S.mpiatti_mov.filter(m=>m.tipo==='venduto' && m.data>=a && m.data<=b);
+  const pezzi = mm => mm.reduce((s,m)=>s + +m.porzioni,0);
+  const costoMov = mm => mm.reduce((s,m)=>s + +m.porzioni*costoPiatto(m.piatto_id),0);
+  const incassoMov = mm => mm.reduce((s,m)=>{ const p=PI(m.piatto_id); return s + (p?+m.porzioni*prezzoNetto(p):0); },0);
+  const cop = (a,b) => S.servizi.filter(x=>x.data>=a && x.data<=b && x.coperti!=null).reduce((s,x)=>s + +x.coperti,0);
+  const ultCarico = S.carichi.map(c=>c.data).sort().pop();
+  const vIeri = vendIn(ieri,ieri), v7 = vendIn(da7,oggi), vMese = vendIn(inizioMese,oggi);
+  const box = (l,v,sub='') => `<div class="numero"><span>${l}</span><b>${v}</b>${sub?`<small style="display:block;color:var(--grigio);font-weight:600">${sub}</small>`:''}</div>`;
+  const numeri = SALA() ? [
+      box('Coperti ieri', num(cop(ieri,ieri),0), 'ultimi 7 giorni: '+num(cop(da7,oggi),0)),
+      box('Venduto ieri', num(pezzi(vIeri),0)+' articoli', incassoMov(vIeri)?eur(incassoMov(vIeri))+' senza IVA':''),
+      box('Bevande: merce ogni 100 €', incassoMov(vMese)>0 ? eur(costoMov(vMese)/incassoMov(vMese)*100) : '—', 'da inizio mese'),
+      box('Valore di cantina e magazzino', eur(valore), 'secondo l\'app')
+    ] : [
+      box('Porzioni vendute ieri', num(pezzi(vIeri),0), 'ultimi 7 giorni: '+num(pezzi(v7),0)),
+      box('Merce per i piatti venduti', eur(costoMov(v7)), 'ultimi 7 giorni'),
+      box('Food cost a piatto', pezzi(vMese)>0 ? eur(costoMov(vMese)/pezzi(vMese)) : '—', 'media da inizio mese'),
+      box('Valore del magazzino', eur(valore), 'secondo l\'app')
+    ];
+  const sistemare = [
+    negativi && `<b>${negativi}</b> prodott${negativi===1?'o':'i'} sotto zero: mancano carichi o una conta`,
+    senzaPrezzo && `<b>${senzaPrezzo}</b> prodott${senzaPrezzo===1?'o':'i'} senza prezzo d'acquisto`,
+    senzaScheda && `<b>${senzaScheda}</b> ${SALA()?'articol'+(senzaScheda===1?'o':'i'):'piatt'+(senzaScheda===1?'o':'i')} senza scheda: non scaricano niente`,
+    (!ultimaC || giorniDa(ultimaC)>14) && (ultimaC ? `Ultima conta ${giorniDa(ultimaC)} giorni fa` : 'Nessuna conta fatta: i numeri del magazzino non sono ancora verificati'),
+    (!ultCarico || giorniDa(ultCarico)>7) && (ultCarico ? `Ultimo carico ${giorniDa(ultCarico)} giorni fa: le consegne vengono caricate?` : 'Nessun carico registrato')
+  ].filter(Boolean);
+  return `<h2 class="titolo">${SALA()?'Sala':'Cucina'}</h2>
+  <p class="intro">${esc(new Date(oggi+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}))}</p>
+  <div class="riga" style="margin-bottom:6px">
+    <button class="btn" data-tab="servizio">Servizio</button>
+    <button class="btn sec" data-tab="carichi" data-open="ca-nuovo">Carica merce</button>
+    <button class="btn sec" data-tab="magazzino" data-open="ma-conta">Conta</button>
+    ${SALA()?'<button class="btn sec" data-tab="tovagliato">Tovagliato</button>':''}
+  </div>
+
+  <div class="pannello" style="margin-top:14px">
+    <div class="pannello-titolo">Da riordinare ${all.length?`<span class="chip ambra">${all.length}</span>`:''}</div>
+    <p class="aiuto">L'app avvisa quando un prodotto è finito, è sotto la scorta minima che hai scritto, oppure (se la scorta minima è vuota) quando in base ai consumi delle ultime due settimane basta per meno di ${GIORNI_ALLARME()} giorni.</p>
+    ${all.length ? [...perForn.entries()].map(([forn, lista])=>{ const fo=S.fornitori.find(x=>x.nome===forn);
+      return `<div class="gruppo-titolo" style="margin-top:14px">${esc(forn)}${fo?.telefono?` · <a style="color:inherit" href="tel:${esc(fo.telefono.replace(/\s/g,''))}">${esc(fo.telefono)}</a>`:''}</div>
+      ${tabella(['Prodotto','#C\'è ancora','Perché',''], lista.map(a=>`<tr>${td(esc(a.p.nome)+(a.p.annata?` <small style="color:var(--grigio)">${esc(a.p.annata)}</small>`:''))}<td class="n" data-v="${a.q}"><span class="${a.q<=0.5?'neg':''}">${fq(a.p,a.q)}</span></td>${td(a.gravita>=2?`<span class="chip ambra">${esc(a.perche)}</span>`:esc(a.perche))}<td><button class="btn sec picc" data-tab="magazzino" data-edit="${a.p.id}">Scorta</button></td></tr>`))}`; }).join('')
+      : '<p class="vuoto">Niente da riordinare.</p>'}
+  </div>
+
+  <div class="numeri">${numeri.join('')}</div>
+
+  ${sistemare.length?`<div class="pannello"><div class="pannello-titolo">Da sistemare</div>${sistemare.map(x=>`<p style="margin:8px 0">${x}</p>`).join('')}</div>`:''}`;
 }
 
 /* ===== MAGAZZINO TOVAGLIATO (sala) ===== */
@@ -1106,7 +1187,8 @@ function vMagazzino(){
   const prodotti = S.prodotti.filter(p=>p.attivo && (ui.catFiltro==='tutte' || p.categoria===ui.catFiltro)).sort(byNome);
   let tot=0;
   const righe = prodotti.map(p=>{ const st=stock(p.id); const c=costo(p.id); const v=(st.mag+st.lin)*c; tot+=v;
-    return `<tr>${td(esc(p.nome)+(p.annata?` <small style="color:var(--grigio)">${esc(p.annata)}</small>`:''))}${td(esc(p.categoria))}<td class="n" data-v="${st.mag}"><span class="${st.mag<0?'neg':''}">${fq(p,st.mag)}</span></td>${SALA()?'':`<td class="n" data-v="${st.lin}"><span class="${st.lin<0?'neg':''}">${fq(p,st.lin)}</span></td>`}${td(c?fc(p,c):'—',1)}<td class="n" data-v="${v}">${eur(v)}</td><td style="white-space:nowrap"><button class="btn sec picc" data-act="corr-prod" data-id="${p.id}">Correggi</button> <button class="btn sec picc" data-act="stor-prod" data-id="${p.id}">Storico</button></td></tr>`; });
+    const sotto = p.scorta_minima!=null && (st.mag+st.lin)<=+p.scorta_minima;
+    return `<tr>${td(esc(p.nome)+(p.annata?` <small style="color:var(--grigio)">${esc(p.annata)}</small>`:'')+(sotto?' <span class="chip ambra">sotto scorta</span>':''))}${td(esc(p.categoria))}<td class="n" data-v="${st.mag}"><span class="${st.mag<0?'neg':''}">${fq(p,st.mag)}</span></td>${SALA()?'':`<td class="n" data-v="${st.lin}"><span class="${st.lin<0?'neg':''}">${fq(p,st.lin)}</span></td>`}${td(c?fc(p,c):'—',1)}<td class="n" data-v="${v}">${eur(v)}</td><td style="white-space:nowrap"><button class="btn sec picc" data-act="corr-prod" data-id="${p.id}">Correggi</button> <button class="btn sec picc" data-act="stor-prod" data-id="${p.id}">Storico</button></td></tr>`; });
   if(righe.length) righe.push(`<tr class="tot"><td colspan="${SALA()?4:5}">Valore totale</td>${td(eur(tot),1)}<td></td></tr>`);
   const pc = ui.corrProd ? P(ui.corrProd) : null;
   const formCorr = pc ? (()=>{ const st=stock(pc.id); const uu=nomeBig(pc); return `<div class="pannello" id="box-corr"><div class="pannello-titolo">Correggi la giacenza di ${esc(pc.nome)}</div>
@@ -1156,6 +1238,7 @@ function vMagazzino(){
       <label>Contenuto di 1 unità in fattura (g, ml o pz)<input name="contenuto_conf" inputmode="decimal" value="${esc(ep.contenuto_conf??'')}" placeholder="${ep.id&&contenuto(ep)?'calcolato: '+contenuto(ep):'es. 1000 per PZ da 1 kg'}"></label>
       <label>Ultimo prezzo (€ per unità in fattura, IVA esclusa)<input name="ultimo_prezzo" inputmode="decimal" value="${esc(ep.ultimo_prezzo??'')}"></label>
       <label>IVA %<input name="iva_pct" inputmode="decimal" value="${esc(ep.iva_pct??'')}"></label>
+      <label>Scorta minima (${ui.editProdotto==='new' ? (SALA()?'bottiglie o pezzi':'kg, litri o pezzi') : esc(nomeBig(ep))})<input name="scorta_minima" inputmode="decimal" value="${ep.scorta_minima!=null && ui.editProdotto!=='new' ? fmtIn(+ep.scorta_minima/mulBig(ep)) : ''}" placeholder="vuoto = la calcola l'app"></label>
       <label>Ultima quantità comprata<input name="ultima_quantita" inputmode="decimal" value="${esc(ep.ultima_quantita??'')}"></label>
       ${SALA() ? `<label>Produttore (vini)<input name="produttore" value="${esc(ep.produttore||'')}"></label>
       <label>Denominazione (vini)<input name="denominazione" value="${esc(ep.denominazione||'')}" placeholder="es. Sicilia DOC"></label>
@@ -1833,7 +1916,7 @@ document.addEventListener('change', e=>{
 document.addEventListener('click', e=>{
   const thO = e.target.closest('th.ordinabile'); if(thO){ ordinaTabella(thO); return; }
   const t = e.target.closest('[data-tab],[data-act]'); if(!t) return;
-  if(t.dataset.tab){ ui.tab=t.dataset.tab; render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ ui.tab=t.dataset.tab; if(t.dataset.open) t.dataset.open.split(',').forEach(x=>OPEN.add(x)); if(t.dataset.edit){ ui.editProdotto=t.dataset.edit; OPEN.add('ma-prod'); } render(); window.scrollTo(0,0); return; }
   const act=t.dataset.act, id=t.dataset.id;
   switch(act){
     case 'esci': sb.auth.signOut(); break;
@@ -2044,9 +2127,10 @@ document.addEventListener('submit', async e=>{
     case 'f-cg-salva': cgSalvaConta(); break;
     case 'f-login': {
       busy(true);
-      const {error} = await sb.auth.signInWithPassword({email:v('email'), password:v('password')});
+      const u = v('email').trim().toLowerCase(); const email = u.includes('@') ? u : u.replace(/\s+/g,'.') + '@' + DOMINIO_UTENTI;
+      const {error} = await sb.auth.signInWithPassword({email, password:v('password')});
       busy(false);
-      if(error) renderLogin('Email o password non corretti.');
+      if(error) renderLogin('Nome utente o password non corretti.');
       break;
     }
     case 'f-porta': {
@@ -2146,6 +2230,7 @@ document.addEventListener('submit', async e=>{
       if(f.elements['resa_quantita']) row.resa_quantita = nOrNull('resa_quantita');
       for(const k of ['produttore','denominazione','annata','vitigni','zona']) if(f.elements[k]) row[k] = v(k).trim()||null;
       if(f.elements['pezzi_per_coperto']) row.pezzi_per_coperto = nOrNull('pezzi_per_coperto');
+      if(f.elements['scorta_minima']){ const sm=nOrNull('scorta_minima'); const mb = f.dataset.id==='new' ? (row.unita==='pz'?1:1000) : mulBig(P(f.dataset.id)); row.scorta_minima = sm==null ? null : +(sm*mb).toFixed(3); }
       if(f.dataset.id==='new') row.reparto = REP;
       if(!row.nome) return toast('Serve il nome.','err');
       const id=f.dataset.id;
