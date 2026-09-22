@@ -133,7 +133,7 @@ body:not(.aiuto-on) .aiuto, body:not(.aiuto-on) .aiuto-campo{display:none}
 .rep-switch{display:flex;background:rgba(255,255,255,.1);border-radius:10px;padding:3px;gap:2px}
 .top .rep-switch button{border:0;border-radius:8px;padding:7px 14px;font-weight:700;color:#fff;opacity:.75;min-height:36px}
 .top .rep-switch button[aria-pressed=true]{background:#fff;color:var(--oliva-900);opacity:1}
-@media (max-width:600px){ .rep-sub{display:none} .top .rep-switch button{padding:7px 10px} }
+@media (max-width:600px){ .rep-sub{display:none} .top .rep-switch button{padding:7px 8px;font-size:14px} .top .utente{display:none} header.top{padding-left:10px;padding-right:10px} .top .marchio{font-size:22px} }
 @media (max-width:600px){ .top .lungo{display:none} .top .corto{display:inline} header.top{gap:10px} }
 /* importazione dalla cassa */
 .imp-sel{min-width:220px;width:100%}
@@ -200,8 +200,8 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ===== Stato ===== */
-const S = {fornitori:[],prodotti:[],prep:[],carichi:[],movimenti:[],mpiatti_mov:[],servizi:[],piatti:[],pcomp:[],menu:[],mpiatti:[],conte:[],crighe:[],abbina:[]};
-const TAB = {fornitori:'fornitori',prodotti:'prodotti',prep:'prep_componenti',carichi:'carichi',movimenti:'movimenti',mpiatti_mov:'movimenti_piatti',servizi:'servizi',piatti:'piatti',pcomp:'piatto_componenti',menu:'menu',mpiatti:'menu_piatti',conte:'conte',crighe:'conte_righe',abbina:'cassa_abbinamenti'};
+const S = {fornitori:[],prodotti:[],prep:[],carichi:[],movimenti:[],mpiatti_mov:[],servizi:[],piatti:[],pcomp:[],menu:[],mpiatti:[],conte:[],crighe:[],abbina:[],rapporti:[]};
+const TAB = {fornitori:'fornitori',prodotti:'prodotti',prep:'prep_componenti',carichi:'carichi',movimenti:'movimenti',mpiatti_mov:'movimenti_piatti',servizi:'servizi',piatti:'piatti',pcomp:'piatto_componenti',menu:'menu',mpiatti:'menu_piatti',conte:'conte',crighe:'conte_righe',abbina:'cassa_abbinamenti',rapporti:'cassa_rapporti'};
 const CAT_CUCINA = ['pesce','crostacei','carne','pasta','verdura','frutta','latticini','dispensa','pane','preparazione','pulizia','materiali','altro'];
 const CAT_SALA = ['bollicine','vino bianco','vino rosato','vino rosso','vino dolce','acqua','bibite','birra','distillati e amari','caffè e tè','pane e coperto','tovagliato','materiali','pulizia','altro'];
 let CATEGORIE = CAT_CUCINA;
@@ -254,10 +254,10 @@ const TIPI_MOV = {omaggio:'Omaggio', reso:'Reso', coperti:'Usato per i coperti',
 const localISO = (d=new Date()) => new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
 const addDays = (iso,n) => { const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return localISO(d); };
 const ui = {
-  tab:'home', user:null,
+  tab:'home', user:null, vista:null,
   svData: localISO(), svTurno: new Date().getHours()<16 ? 'pranzo' : 'cena',
   editProdotto:null, editFornitore:null, corrProd:null, stData:localISO(), stProd:'tutti', ordProd:{k:'nome',d:1}, ordForn:{k:'nome',d:1}, filtroForn:'tutti', filtroCatProd:'tutte', editPiatto:null, editMenu:null, catFiltro:'tutte',
-  coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:'', cfCat:'tutte', editTov:null
+  coDa: localISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), coA: localISO(), incasso:'', cfCat:'tutte', editTov:null, ordine:null, rvData:null, rvTurno:'tutti'
 };
 const OPEN = new Set((()=>{try{return JSON.parse(localStorage.getItem('22open2'))}catch{return null}})() || ['sv-linea','sv-porta','sv-vendite','ca-nuovo','ma-giac','sc-piatti','re-calc','re-storico','co-sintesi']);
 
@@ -401,7 +401,10 @@ const AIUTO_SALA = {
   'co-sintesi':"Quante bevande sono state usate nel periodo e quante sono spiegate da venduto, omaggi, rotture e personale. Quello che resta è «non spiegato».",
   'co-confronto':"La merce comprata messa a confronto con quella che il venduto fa uscire. Mostra su quali bottiglie nasce la differenza.",
   'co-famiglie':"Per ogni famiglia (vino in bottiglia, calici, acqua, caffè…) quanto si è incassato e quanto è costata la merce. «Merce ogni 100 €» è il costo delle bevande.",
-  'tv-stato':"Quanti pezzi puliti ci sono secondo l'app e quanti sporchi aspettano la lavanderia. Il costo per coperto viene da prezzo a pezzo e pezzi per coperto.",
+  'rv-saltate':"Le voci della cassa che oggi l'app salta (menu, voci solo d'incasso…). Se una di queste è un piatto o una bevanda vera, associala qui: dal prossimo rapporto scaricherà il magazzino.",
+  'rv-giorno':"Scegli un giorno e vedi cosa ha caricato il rapporto della cassa: piatti e articoli, quantità, cosa hanno scaricato dal magazzino e quanto costa la merce. Se qualcosa è sbagliato, puoi annullare il rapporto del giorno e ricaricarlo.",
+  'tv-stato':"Puliti, sporchi da ritirare e totale da noi, confrontati con la dotazione di partenza. Il costo per coperto viene da prezzo a pezzo e pezzi per coperto.",
+  'tv-pass':"Quando passa la lavanderia scrivi, per ogni pezzo, quanti sporchi ha ritirato e quanti puliti ha consegnato. I consegnati entrano nei puliti e sono la spesa.",
   'tv-cons':"Quando la lavanderia porta i puliti: quanti pezzi per tipo e il prezzo a pezzo. È la spesa del tovagliato.",
   'tv-rit':"Quando la lavanderia ritira gli sporchi: quanti pezzi per tipo. Non cambia i puliti, serve a controllare che i conti tornino.",
   'tv-conta':"Contare i puliti in magazzino e in sala. Se ne mancano, sono pezzi che la lavanderia fa pagare.",
@@ -678,16 +681,16 @@ function render(){
   $('#app').innerHTML = `
     <header class="top">
       <div><div class="marchio">22</div></div>
-      <div class="rep-switch" role="group" aria-label="Reparto">${[['cucina','Cucina'],['sala','Sala']].map(([k,l])=>`<button data-act="rep" data-r="${k}" aria-pressed="${REP===k}">${l}</button>`).join('')}</div>
-      <div class="marchio-sub rep-sub">${SALA()?'Sala e bevande':'Cucina e food cost'}<br>Metodo 22</div>
+      <div class="rep-switch" role="group" aria-label="Reparto">${[['cucina','Cucina'],['cassa','Cassa'],['sala','Sala']].map(([k,l])=>`<button data-act="rep" data-r="${k}" aria-pressed="${k==='cassa' ? ui.vista==='cassa' : (ui.vista!=='cassa' && REP===k)}">${l}</button>`).join('')}</div>
+      <div class="marchio-sub rep-sub">${ui.vista==='cassa'?'Rapporto di vendita':SALA()?'Sala e bevande':'Cucina e food cost'}<br>Metodo 22</div>
       <div class="spazio"></div>
       <div class="utente">${esc(ui.user.email.endsWith("@"+DOMINIO_UTENTI) ? ui.user.email.split("@")[0] : ui.user.email)}</div>
-      <button data-act="aiuto" class="${AIUTO_ON?'acceso':''}" aria-pressed="${AIUTO_ON}" title="Mostra o nasconde le spiegazioni" style="white-space:nowrap"><span class="lungo">Spiegazioni</span><span class="corto">Aiuto</span> ${AIUTO_ON?'sì':'no'}</button>
+      <button data-act="aiuto" class="${AIUTO_ON?'acceso':''}" aria-pressed="${AIUTO_ON}" title="Mostra o nasconde le spiegazioni" style="white-space:nowrap"><span class="lungo">Spiegazioni ${AIUTO_ON?'sì':'no'}</span><span class="corto">?</span></button>
       <button data-act="esci">Esci</button>
     </header>
-    <nav class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')}</nav>
+    ${ui.vista==='cassa' ? '' : `<nav class="tabs" role="tablist">`}${ui.vista==='cassa' ? '' : tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')+'</nav>'}
     <datalist id="dl-prodotti">${S.prodotti.filter(p=>p.attivo && isFood(p)).sort(byNome).map(p=>`<option value="${esc(p.nome)}"></option>`).join('')}</datalist>
-    <main>${({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab,home:vHome})[ui.tab]()}</main>`;
+    <main>${ui.vista==='cassa' ? vCassa() : ({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab,home:vHome})[ui.tab]()}</main>`;
   if(ui.tab==='servizio'){ aggiornaPorta(); aggiornaCoperti(); }
   if(ui.tab==='carichi'){ aggiornaCalcCarico(); aggiornaProduzione(); }
   if(ui.tab==='rese') aggiornaCalcolatrice();
@@ -747,6 +750,7 @@ function vServizio(){
     </form>`)}
 
   ${det('sv-vendite','2 · Fine servizio: piatti venduti', piattiAttivi.length ? `
+    <div style="margin-top:12px"><button class="btn sec" type="button" data-act="vai-cassa">Carica il rapporto della cassa</button> <span class="nota">oppure scrivi i numeri qui sotto</span></div>
     <form id="f-vendite">
       ${perPortata.map(g=>`<div class="gruppo-titolo">${esc(g.po)}</div>${g.lista.map(p=>`
         <div class="vendita-riga"><span>${esc(p.nome)} <small style="color:var(--grigio)">· in linea ${num(porzioniLinea(p.id))}</small></span><input name="q_${p.id}" inputmode="numeric" placeholder="0" aria-label="Venduti ${esc(p.nome)}"></div>`).join('')}`).join('')}
@@ -842,8 +846,7 @@ function vServizioSala(){
     sv?.coperti!=null ? sv.coperti+' coperti' : '')}
 
   ${det('ss-vendite','2 · Venduto dalla cassa', art.length ? `
-    <div style="margin-top:12px">${IMP ? vImport(sv) : `<button class="btn" data-act="imp-scegli">Importa dalla cassa</button> <span class="nota">oppure scrivi i numeri qui sotto</span>`}
-      <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,.txt" hidden></div>
+    <div style="margin-top:12px"><button class="btn" data-act="vai-cassa">Carica il rapporto della cassa</button> <span class="nota">oppure scrivi i numeri qui sotto</span></div>
     <form id="f-vendite-sala">
       ${perFam.map(g=>`<div class="gruppo-titolo">${esc(g.po)}</div>${g.lista.map(p=>{ const n=gia(p.id); return `
         <div class="vendita-riga"><span>${esc(p.nome)}${n?` <small style="color:var(--grigio)">· già segnati ${num(n)}</small>`:''}</span><input name="q_${p.id}" inputmode="numeric" placeholder="0" aria-label="Venduti ${esc(p.nome)}"></div>`; }).join('')}`).join('')}
@@ -943,6 +946,7 @@ function vHome(){
   <p class="intro">${esc(new Date(oggi+'T12:00:00').toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'}))}</p>
   <div class="riga" style="margin-bottom:6px">
     <button class="btn" data-tab="servizio">Servizio</button>
+    <button class="btn sec" data-act="vai-cassa">Rapporto cassa</button>
     <button class="btn sec" data-tab="carichi" data-open="ca-nuovo">Carica merce</button>
     <button class="btn sec" data-tab="magazzino" data-open="ma-conta">Conta</button>
     ${SALA()?'<button class="btn sec" data-tab="tovagliato">Tovagliato</button>':''}
@@ -952,14 +956,68 @@ function vHome(){
     <div class="pannello-titolo">Da riordinare ${all.length?`<span class="chip ambra">${all.length}</span>`:''}</div>
     <p class="aiuto">L'app avvisa quando un prodotto è finito, è sotto la scorta minima che hai scritto, oppure (se la scorta minima è vuota) quando in base ai consumi delle ultime due settimane basta per meno di ${GIORNI_ALLARME()} giorni.</p>
     ${all.length ? [...perForn.entries()].map(([forn, lista])=>{ const fo=S.fornitori.find(x=>x.nome===forn);
-      return `<div class="gruppo-titolo" style="margin-top:14px">${esc(forn)}${fo?.telefono?` · <a style="color:inherit" href="tel:${esc(fo.telefono.replace(/\s/g,''))}">${esc(fo.telefono)}</a>`:''}</div>
-      ${tabella(['Prodotto','#C\'è ancora','Perché',''], lista.map(a=>`<tr>${td(esc(a.p.nome)+(a.p.annata?` <small style="color:var(--grigio)">${esc(a.p.annata)}</small>`:''))}<td class="n" data-v="${a.q}"><span class="${a.q<=0.5?'neg':''}">${fq(a.p,a.q)}</span></td>${td(a.gravita>=2?`<span class="chip ambra">${esc(a.perche)}</span>`:esc(a.perche))}<td><button class="btn sec picc" data-tab="magazzino" data-edit="${a.p.id}">Scorta</button></td></tr>`))}`; }).join('')
+      return `<div class="gruppo-titolo" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span style="flex:1">${esc(forn)}${fo?.telefono?` · <a style="color:inherit" href="tel:${esc(fo.telefono.replace(/\s/g,''))}">${esc(fo.telefono)}</a>`:''}</span>${forn!=='Senza fornitore'?`<button class="btn picc" data-act="ordina" data-f="${esc(forn)}">${ui.ordine===forn?'Chiudi ordine':'Ordina su WhatsApp'}</button>`:''}</div>
+      ${ui.ordine===forn ? vOrdine(forn, lista) : tabella(['Prodotto','#C\'è ancora','Perché',''], lista.map(a=>`<tr>${td(esc(a.p.nome)+(a.p.annata?` <small style="color:var(--grigio)">${esc(a.p.annata)}</small>`:''))}<td class="n" data-v="${a.q}"><span class="${a.q<=0.5?'neg':''}">${fq(a.p,a.q)}</span></td>${td(a.gravita>=2?`<span class="chip ambra">${esc(a.perche)}</span>`:esc(a.perche))}<td><button class="btn sec picc" data-tab="magazzino" data-edit="${a.p.id}">Scorta</button></td></tr>`))}`; }).join('')
       : '<p class="vuoto">Niente da riordinare.</p>'}
   </div>
 
   <div class="numeri">${numeri.join('')}</div>
 
   ${sistemare.length?`<div class="pannello"><div class="pannello-titolo">Da sistemare</div>${sistemare.map(x=>`<p style="margin:8px 0">${x}</p>`).join('')}</div>`:''}`;
+}
+
+/* ===== ORDINE AL FORNITORE SU WHATSAPP ===== */
+/* come si ordina: a kg/litri se la fattura è a peso, altrimenti a confezioni (cassa, cartone…) */
+function unitaOrdine(p){
+  const um = umFatt(p), c = contenuto(p) || 1;
+  if(['KG','KGM'].includes(um)) return {per:c, sing:'kg', plur:'kg', desc:''};
+  if(['L','LT'].includes(um)) return {per:c, sing:'L', plur:'L', desc:''};
+  if(c>1){ const conf = String(p.confezione||'').trim(); const m = conf.match(/^(cassa|cartone|confezione|scatola|busta|sacco|vaschetta|fardello|pacco)/i); const n = m ? m[1].toLowerCase() : 'confezione';
+    const plur = {cassa:'casse',confezione:'confezioni',scatola:'scatole',busta:'buste',vaschetta:'vaschette'}[n] || (n.endsWith('o') ? n.slice(0,-1)+'i' : n);
+    return {per:c, sing:n, plur, desc:conf}; }
+  if(isBott(p)) return {per:+p.contenuto_conf, sing:'bottiglia', plur:'bottiglie', desc:''};
+  return {per:c, sing:'pz', plur:'pz', desc:''};
+}
+function qtaSuggerita(p, q){
+  const c = consumoGiorno(p.id); const min = p.scorta_minima!=null ? +p.scorta_minima : 0;
+  const obiettivo = Math.max(min, c * GIORNI_ALLARME() * 2);
+  const serve = Math.max(obiettivo - Math.max(q,0), 0); const u = unitaOrdine(p);
+  return Math.max(1, Math.ceil(serve / u.per - 1e-9));
+}
+function telWhatsApp(t){ let d = String(t||'').replace(/\D/g,''); if(!d) return ''; if(d.startsWith('00')) d = d.slice(2); if(!d.startsWith('39') || d.length<=10) d = '39'+d; return d; }
+/* il messaggio si scrive dai dati, così è già pronto appena si apre l'ordine */
+function testoOrdine(voci, quando='', nota=''){
+  const righe = voci.map(({p,n})=>{ if(!p || !(n>0)) return null; const u=unitaOrdine(p);
+    const qta = u.sing==='kg'||u.sing==='L' ? `${num(n,2)} ${u.sing}` : `${num(n,0)} ${n===1?u.sing:u.plur}`;
+    return `- ${qta} ${p.nome}${p.annata?' '+p.annata:''}${u.desc?` (${u.desc})`:''}`; }).filter(Boolean);
+  if(!righe.length) return '';
+  return `Buongiorno, sono di 22 Cucina Isolana (Cefalù). Vorremmo ordinare:\n${righe.join('\n')}${quando?`\n\nConsegna: ${quando}`:''}${nota?`\n\n${nota}`:''}\n\nGrazie!`;
+}
+function aggiornaOrdine(){
+  const f = $('#f-ordine'), t = $('#ord-testo'); if(!f || !t) return;
+  const voci = [...f.querySelectorAll('[data-op]')].map(r=>({p:P(r.dataset.op), n:parseN(r.querySelector('input').value)}));
+  t.value = testoOrdine(voci, f.elements['quando']?.value.trim()||'', f.elements['nota']?.value.trim()||'');
+}
+function vOrdine(forn, lista){
+  const fo = S.fornitori.find(x=>x.nome===forn);
+  const altri = S.prodotti.filter(p=>p.attivo && nomeForn(p)===forn && !lista.some(a=>a.p.id===p.id)).sort(byNome);
+  const riga = (p, q, sugg) => { const u=unitaOrdine(p); return `<div class="vendita-riga" data-op="${p.id}"><span>${esc(p.nome)}${p.annata?' '+esc(p.annata):''}<small class="q" style="display:block;color:var(--grigio);font-size:12px">c'è ancora ${fq(p,q)}${u.desc?' · '+esc(u.desc):''}</small></span><span style="display:flex;align-items:center;gap:6px"><input inputmode="decimal" value="${sugg??''}" placeholder="0" style="width:80px" aria-label="Quanti ${esc(p.nome)}"><small style="width:70px">${u.plur}</small></span></div>`; };
+  return `<form id="f-ordine" class="pannello" style="margin-top:6px">
+    <p class="aiuto">Le quantità sono già proposte, in ${GIORNI_ALLARME()*2} giorni di consumo o fino alla scorta minima. Cambiale come vuoi: il messaggio si aggiorna. «Apri WhatsApp» apre la chat ${fo?.telefono?'del fornitore':''} con il testo pronto: lo controlli e lo invii tu.</p>
+    ${lista.map(a=>riga(a.p, a.q, qtaSuggerita(a.p, a.q))).join('')}
+    ${altri.length?`<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">Aggiungi altri prodotti di ${esc(forn)} (${altri.length})</summary>${altri.map(p=>{ const st=stock(p.id); return riga(p, st.mag+st.lin, ''); }).join('')}</details>`:''}
+    <div class="griglia" style="margin-top:12px">
+      <label>Consegna<input name="quando" placeholder="es. domani mattina"></label>
+      <label>Note<input name="nota" placeholder="facoltativo"></label>
+    </div>
+    <label style="margin-top:12px">Messaggio<textarea id="ord-testo" rows="8" style="width:100%;font:inherit">${esc(testoOrdine(lista.map(a=>({p:a.p, n:qtaSuggerita(a.p, a.q)}))))}</textarea></label>
+    <div class="riga" style="margin-top:12px">
+      <button class="btn" type="button" data-act="ordina-wa" data-tel="${esc(telWhatsApp(fo?.telefono))}">Apri WhatsApp</button>
+      <button class="btn sec" type="button" data-act="ordina-wa" data-b="1" data-tel="${esc(telWhatsApp(fo?.telefono))}">Apri WhatsApp Business</button>
+      <button class="btn sec" type="button" data-act="ordina-copia">Copia il messaggio</button>
+    </div>
+    ${fo?.telefono?'':'<p class="nota">Questo fornitore non ha il telefono: WhatsApp si apre e scegli tu la chat. Puoi aggiungerlo in Magazzino → Fornitori.</p>'}
+  </form>`;
 }
 
 /* ===== MAGAZZINO TOVAGLIATO (sala) ===== */
@@ -979,24 +1037,19 @@ function vTovagliatoTab(){
   ${!pezzi.length?'<div class="avviso">Nessun pezzo ancora: aggiungilo qui sotto in «Pezzi e prezzi».</div>':''}
   ${manca.length?`<div class="avviso" style="margin-bottom:12px">Manca il prezzo a pezzo: ${manca.map(esc).join(', ')}. Scrivilo in «Pezzi e prezzi».</div>`:''}
 
-  ${det('tv-stato','Situazione adesso', pezzi.length ? tabella(['Pezzo','#Per coperto','#Prezzo a pezzo','#Puliti da noi','#Sporchi da ritirare'],
-    pezzi.map(p=>{ const st=stock(p.id).mag; const sp=Math.max(0, sommaMov(p.id,'coperti') - sommaMov(p.id,'reso'));
-      return `<tr>${td(esc(p.nome))}${td(+p.pezzi_per_coperto>0?num(+p.pezzi_per_coperto,2):'—',1)}${td(prezzo(p)?eur(prezzo(p)):'—',1)}<td class="n" data-v="${st}"><b class="${st<0?'neg':''}">${num(st,0)}</b></td>${td(num(sp,0),1)}</tr>`; }))
+  ${det('tv-stato','Situazione adesso', pezzi.length ? tabella(['Pezzo','#Dotazione','#Puliti','#Sporchi da ritirare','#Totale da noi','#Differenza'],
+    pezzi.map(p=>{ const st=stock(p.id).mag; const sp=Math.max(0, sommaMov(p.id,'coperti') - sommaMov(p.id,'reso')); const tot=st+sp; const dot=p.dotazione!=null?+p.dotazione:null; const diff=dot!=null?tot-dot:null;
+      return `<tr>${td(esc(p.nome)+`<small class="q">${+p.pezzi_per_coperto>0?num(+p.pezzi_per_coperto,2)+' per coperto':''}${prezzo(p)?' · '+eur(prezzo(p))+' a pezzo':''}</small>`)}${td(dot!=null?num(dot,0):'—',1)}<td class="n" data-v="${st}"><b class="${st<0?'neg':''}">${num(st,0)}</b></td>${td(num(sp,0),1)}${td(num(tot,0),1)}<td class="n" data-v="${diff??0}">${diff==null?'—':Math.abs(diff)<0.5?'<span class="chip">torna</span>':`<span class="${diff<0?'neg':''}">${diff>0?'+':''}${num(diff,0)}</span>`}</td></tr>`; }))
+    + '<p class="nota">Totale da noi = puliti + sporchi non ancora ritirati. Con il noleggio deve restare uguale alla dotazione: se è più basso, mancano pezzi (che la lavanderia fa pagare).</p>'
     + `<div class="calc"><div><span>Costo del tovagliato per coperto</span><b>${perCop?eur(perCop):'—'}</b></div></div>` : '<p class="vuoto">Nessun pezzo.</p>')}
 
-  ${det('tv-cons','Consegna della lavanderia (puliti)', pezzi.length ? `
-    <form id="f-tov-cons">
+  ${det('tv-pass','Passaggio della lavanderia', pezzi.length ? `
+    <form id="f-tov-pass">
       <div class="riga"><label>Giorno<input type="date" name="data" value="${oggi}"></label></div>
-      ${pezzi.map(p=>`<div class="vendita-riga"><span>${esc(p.nome)}</span><span style="display:flex;gap:6px"><input name="q_${p.id}" inputmode="decimal" placeholder="pezzi" aria-label="Pezzi ${esc(p.nome)}"><input name="p_${p.id}" inputmode="decimal" value="${prezzo(p)?fmtIn(prezzo(p)):''}" placeholder="€ a pezzo" aria-label="Prezzo a pezzo ${esc(p.nome)}"></span></div>`).join('')}
-      <div style="margin-top:12px"><button class="btn" type="submit">Carica la consegna</button></div>
-      <p class="nota">Per ogni pezzo: quanti ne sono arrivati e il prezzo a pezzo (IVA esclusa), come nella bolla o nella fattura della lavanderia.</p>
-    </form>` : '<p class="vuoto">Aggiungi prima i pezzi.</p>')}
-
-  ${det('tv-rit','Ritiro della lavanderia (sporchi)', pezzi.length ? `
-    <form id="f-tov-rit">
-      <div class="riga"><label>Giorno<input type="date" name="data" value="${oggi}"></label></div>
-      ${pezzi.map(p=>riga(p,'q')).join('')}
-      <div style="margin-top:12px"><button class="btn" type="submit">Segna il ritiro</button></div>
+      <div class="vendita-riga" style="font-weight:700;color:var(--grigio);font-size:13px"><span>Pezzo</span><span style="display:flex;gap:6px"><span style="width:90px;text-align:center">Ritirati sporchi</span><span style="width:90px;text-align:center">Consegnati puliti</span><span style="width:90px;text-align:center">€ a pezzo</span></span></div>
+      ${pezzi.map(p=>`<div class="vendita-riga"><span>${esc(p.nome)}</span><span style="display:flex;gap:6px"><input name="r_${p.id}" inputmode="decimal" placeholder="0" style="width:90px" aria-label="Ritirati ${esc(p.nome)}"><input name="q_${p.id}" inputmode="decimal" placeholder="0" style="width:90px" aria-label="Consegnati ${esc(p.nome)}"><input name="p_${p.id}" inputmode="decimal" value="${prezzo(p)?fmtIn(prezzo(p)):''}" placeholder="€" style="width:90px" aria-label="Prezzo a pezzo ${esc(p.nome)}"></span></div>`).join('')}
+      <div style="margin-top:12px"><button class="btn" type="submit">Registra il passaggio</button></div>
+      <p class="nota">Ogni volta che passa la lavanderia: quanti sporchi ha ritirato e quanti puliti ha consegnato. I consegnati sono la spesa (prezzo a pezzo, IVA esclusa).</p>
     </form>` : '<p class="vuoto">Aggiungi prima i pezzi.</p>')}
 
   ${det('tv-conta','Conta dei puliti', pezzi.length ? `
@@ -1017,6 +1070,7 @@ function vTovagliatoTab(){
       <label>Nome<input name="nome" value="${esc(ep.nome)}" required placeholder="es. Tovaglie"></label>
       <label>Prezzo a pezzo (€, IVA esclusa)<input name="prezzo" inputmode="decimal" value="${ep.ultimo_prezzo??''}"></label>
       <label>Pezzi per coperto<input name="ppc" inputmode="decimal" value="${ep.pezzi_per_coperto??''}" placeholder="es. 1 o 0,5"></label>
+      <label>Dotazione (pezzi in circolo)<input name="dot" inputmode="decimal" value="${ep.dotazione??''}" placeholder="es. 510"></label>
       <div class="riga"><button class="btn" type="submit">Salva</button><button class="btn sec" type="button" data-act="tov-chiudi">Chiudi</button></div>
     </form>` : ''}
     ${tabella(['Pezzo','#Per coperto','#Prezzo a pezzo',''], pezzi.map(p=>`<tr>${td(esc(p.nome))}${td(+p.pezzi_per_coperto>0?num(+p.pezzi_per_coperto,2):'—',1)}${td(prezzo(p)?eur(prezzo(p)):'—',1)}<td><button class="btn sec picc" data-act="tov-modifica" data-id="${p.id}">Modifica</button></td></tr>`), 'Nessun pezzo.')}`)}`;
@@ -1051,6 +1105,8 @@ async function leggiFileCassa(file){
   IMP = {nomeFile:file.name, rows:corpo, intest, iNome, iQta:Math.max(0,iQta), iTot, iCat};
   impCalcola();
 }
+const PIA = id => (RAW.piatti||[]).find(p=>p.id===id);
+const repDi = p => (p && p.reparto) || 'cucina';
 function impCalcola(){
   const m = new Map(); IMP.coperti = null;
   for(const r of IMP.rows){
@@ -1060,32 +1116,130 @@ function impCalcola(){
     if(k==='coperto' || k==='coperti'){ IMP.coperti = (IMP.coperti||0) + Math.round(q); continue; }
     const x = m.get(k) || {nome, q:0, tot:0, cat:IMP.iCat>=0 ? (r[IMP.iCat]||'') : ''}; x.q += q; if(IMP.iTot>=0) x.tot += parseImp(r[IMP.iTot]); m.set(k, x);
   }
-  const abb = new Map(S.abbina.map(a=>[a.nome_cassa, a]));
-  const art = S.piatti.filter(p=>p.attivo);
+  const abb = new Map((RAW.abbina||[]).map(a=>[a.nome_cassa, a]));
+  const art = (RAW.piatti||[]).filter(p=>p.attivo);
   IMP.voci = [...m.entries()].map(([k,x])=>{
-    const a = abb.get(k); let pid = a ? (a.ignora ? 'ignora' : a.piatto_id) : '';
-    if(!a){ const e = art.find(p=>normNome(p.nome)===k) || (c=>c.length===1?c[0]:null)(art.filter(p=>{ const n=normNome(p.nome); return n.includes(k) || k.includes(n); })); if(e) pid = e.id; }
-    if(pid && pid!=='ignora' && !PI(pid)) pid = '';
-    return {k, nome:x.nome, cat:x.cat, q:Math.round(x.q*100)/100, prezzoCassa: IMP.iTot>=0 && x.q>0 ? x.tot/x.q : null, pid, ricordato:!!a};
+    const perc = / p$/.test(k);   /* «Capone - P» = lo stesso piatto, servito nel percorso (menu): in cassa costa 0 */
+    const k2 = k.replace(/ p$/,'');
+    const a = abb.get(k) || (perc ? abb.get(k2) : abb.get(k+' p'));
+    let pid = a ? (a.ignora ? 'ignora' : a.piatto_id) : '';
+    if(!a){
+      const e = art.find(p=>{ const n=normNome(p.nome); return n===k || n===k2; }) || (c=>c.length===1?c[0]:null)(art.filter(p=>{ const n=normNome(p.nome); return n.length>3 && (n.includes(k2) || k2.includes(n)); }));
+      if(e) pid = e.id; }
+    if(pid && pid!=='ignora' && !PIA(pid)) pid = '';
+    return {k, nome:x.nome, cat:x.cat, perc, q:Math.round(x.q*100)/100, prezzoCassa: IMP.iTot>=0 && x.q>0 ? x.tot/x.q : null, pid, ricordato:!!abb.get(k)};
   }).sort((a,b)=>(a.pid?1:0)-(b.pid?1:0) || a.nome.localeCompare(b.nome,'it'));
 }
-function vImport(sv){
-  const art = S.piatti.filter(p=>p.attivo);
-  const opz = sel => `<option value="">Scegli…</option><option value="ignora" ${sel==='ignora'?'selected':''}>Non è della sala: salta</option>` + PORTATE.map(po=>{ const l=art.filter(p=>p.portata===po).sort(byNome); return l.length?`<optgroup label="${esc(po)}">${l.map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${esc(p.nome)}</option>`).join('')}</optgroup>`:''; }).join('');
-  const gia = sv ? S.mpiatti_mov.filter(m=>m.servizio_id===sv.id && m.tipo==='venduto').length : 0;
-  const daFare = IMP.voci.filter(v=>!v.pid).length;
+function vImport(){
+  const art = (RAW.piatti||[]).filter(p=>p.attivo);
+  const gruppi = (rep, pors, et) => pors.map(po=>{ const l=art.filter(p=>repDi(p)===rep && p.portata===po).sort(byNome); return l.length?`<optgroup label="${et} · ${esc(po)}">${l.map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</optgroup>`:''; }).join('');
+  const OPZ = `<option value="">Scegli…</option><option value="ignora">Salta: non scarica niente</option>` + gruppi('cucina', POR_CUCINA, 'Cucina') + gruppi('sala', POR_SALA, 'Sala');
+  const opz = sel => sel ? OPZ.replace(`value="${sel}"`, `value="${sel}" selected`) : OPZ;
+  const sv = (RAW.servizi||[]).find(x=>x.data===ui.svData && x.turno===ui.svTurno);
+  const gia = sv ? (RAW.mpiatti_mov||[]).filter(m=>m.servizio_id===sv.id && (m.tipo==='venduto'||m.tipo==='surplus')).length : 0;
+  const conta = {cucina:0, sala:0, ignora:0, fare:0}; const pz = {cucina:0, sala:0};
+  for(const v of IMP.voci){ if(!v.pid) conta.fare++; else if(v.pid==='ignora') conta.ignora++; else { const r=repDi(PIA(v.pid)); conta[r]++; pz[r]+=v.q; } }
   const optCol = sel => IMP.intest.map((c,i)=>`<option value="${i}" ${i===sel?'selected':''}>${esc(c)}</option>`).join('');
-  return `<div class="pannello"><div class="pannello-titolo">Dalla cassa: ${esc(IMP.nomeFile)}</div>
-    <p class="aiuto">Ogni riga è una voce della cassa. Scegli a quale articolo corrisponde, oppure «salta» se non è della sala (per esempio i piatti). Gli abbinamenti vengono ricordati: dalla seconda volta si riempiono da soli.</p>
-    <div class="riga"><label>Colonna con il nome<select id="imp-col-nome">${optCol(IMP.iNome)}</select></label><label>Colonna con la quantità<select id="imp-col-qta">${optCol(IMP.iQta)}</select></label></div>
-    ${gia?`<div class="avviso">In questo turno ci sono già ${gia} articoli registrati. Controlla di non caricare due volte lo stesso venduto.</div>`:''}
-    ${IMP.coperti!=null?`<label style="flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600;margin-top:10px"><input type="checkbox" id="imp-coperti" checked style="min-height:auto;width:20px;height:20px"> Coperti dalla cassa: ${num(IMP.coperti,0)}. Salvali nel turno.</label>`:''}
-    ${IMP.voci.length ? `<form id="f-import">${tabella(['Voce della cassa','#Quantità','Articolo dell\'app'], IMP.voci.map((v,i)=>{ const p=v.pid&&v.pid!=='ignora'?PI(v.pid):null; const diff = p && v.prezzoCassa!=null && +p.prezzo>0 && Math.abs(v.prezzoCassa - +p.prezzo)>0.05;
-      return `<tr class="${v.pid?'':'imp-da'}">${td(esc(v.nome)+(v.cat?` <small style="color:var(--grigio)">${esc(v.cat)}</small>`:'')+(v.ricordato?' <span class="chip">già abbinato</span>':'')+(diff?`<br><span class="chip ambra">in cassa ${eur(v.prezzoCassa)}, nell'app ${eur(+p.prezzo)}</span>`:''))}${td(num(v.q,2),1)}<td><select class="imp-sel" name="v_${i}" data-i="${i}" aria-label="Articolo per ${esc(v.nome)}">${opz(v.pid)}</select></td></tr>`; }))}
-      <p class="nota"><span id="imp-conta">${daFare?`${daFare} voci da abbinare (in giallo).`:'Tutte le voci sono abbinate.'}</span> Il venduto va su ${esc(dataIt(ui.svData))}, ${esc(ui.svTurno)}.</p>
-      <div class="riga" style="margin-top:12px"><button class="btn" type="submit">Registra il venduto</button><button class="btn sec" type="button" data-act="imp-annulla">Annulla</button></div>
-    </form>` : `<div class="avviso">Non trovo quantità in questo file. Prova a cambiare le colonne qui sopra.</div><div style="margin-top:10px"><button class="btn sec" type="button" data-act="imp-annulla">Annulla</button></div>`}
+  return `<div class="pannello"><div class="pannello-titolo">${esc(IMP.nomeFile)}</div>
+    <div class="numeri">
+      <div class="numero"><span>Alla cucina</span><b>${num(pz.cucina,0)}</b><small style="display:block;color:var(--grigio);font-weight:600">${conta.cucina} voci</small></div>
+      <div class="numero"><span>Alla sala</span><b>${num(pz.sala,0)}</b><small style="display:block;color:var(--grigio);font-weight:600">${conta.sala} voci</small></div>
+      <div class="numero"><span>Saltate</span><b>${conta.ignora}</b><small style="display:block;color:var(--grigio);font-weight:600">menu, voci solo d'incasso</small></div>
+      <div class="numero"><span>Da decidere</span><b class="${conta.fare?'neg':''}">${conta.fare}</b><small style="display:block;color:var(--grigio);font-weight:600">in giallo qui sotto</small></div>
+    </div>
+    <p class="aiuto">Ogni voce della cassa va a un piatto della cucina o a un articolo della sala, oppure si salta. I menu si saltano: i loro piatti arrivano già come voci «- P» (percorso), che sono lo stesso piatto della carta con prezzo 0 in cassa. «Capone» e «Capone - P» vanno allo stesso piatto e scaricano la stessa scheda. Le scelte vengono ricordate: la volta dopo si abbina tutto da solo.</p>
+    ${IMP.coperti!=null?`<label style="flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600;margin-top:10px"><input type="checkbox" id="imp-coperti" checked style="min-height:auto;width:20px;height:20px"> Coperti dalla cassa: ${num(IMP.coperti,0)}. Salvali nel turno (scarica anche pane e tovagliato).</label>`:''}
+    ${gia?`<div class="avviso">In questo giorno e turno ci sono già ${gia} vendite registrate. Controlla di non caricare due volte lo stesso rapporto.</div>`:''}
+    ${IMP.voci.length ? `<form id="f-import">${tabella(['Voce della cassa','#Quantità','Va a'], IMP.voci.map((v,i)=>{ const p=v.pid&&v.pid!=='ignora'?PIA(v.pid):null; const diff = p && !v.perc && v.prezzoCassa>0 && +p.prezzo>0 && Math.abs(v.prezzoCassa - +p.prezzo)>0.05;
+      return `<tr class="${v.pid?'':'imp-da'}">${td(esc(v.nome)+(v.perc?' <span class="chip">percorso</span>':'')+(v.cat?` <small style="color:var(--grigio)">${esc(v.cat)}</small>`:'')+(diff?`<br><span class="chip ambra">in cassa ${eur(v.prezzoCassa)}, nell'app ${eur(+p.prezzo)}</span>`:''))}${td(num(v.q,2),1)}<td>${p?`<span class="chip">${repDi(p)}</span> `:''}<select class="imp-sel" name="v_${i}" data-i="${i}" aria-label="Dove va ${esc(v.nome)}">${opz(v.pid)}</select></td></tr>`; }))}
+      <p class="nota">Le vendite vanno su ${esc(dataIt(ui.svData))}, ${esc(ui.svTurno)}. Cucina: prima dalle porzioni in linea, il resto dal magazzino. Sala: dal magazzino.</p>
+      <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--grigio)">Colonne del file</summary><div class="riga" style="margin-top:8px"><label>Nome<select id="imp-col-nome">${optCol(IMP.iNome)}</select></label><label>Quantità<select id="imp-col-qta">${optCol(IMP.iQta)}</select></label></div></details>
+      <div class="riga" style="margin-top:12px"><button class="btn" type="submit">Registra le vendite</button><button class="btn sec" type="button" data-act="imp-annulla">Annulla</button></div>
+    </form>` : `<div class="avviso">Non trovo quantità in questo file.</div><div class="riga" style="margin-top:8px"><label>Nome<select id="imp-col-nome">${optCol(IMP.iNome)}</select></label><label>Quantità<select id="imp-col-qta">${optCol(IMP.iQta)}</select></label></div><div style="margin-top:10px"><button class="btn sec" type="button" data-act="imp-annulla">Annulla</button></div>`}
   </div>`;
+}
+/* ===== CASSA: il rapporto di vendita, diviso tra cucina e sala ===== */
+function vCassa(){
+  const ultimi = (RAW.servizi||[]).filter(sv=>(RAW.mpiatti_mov||[]).some(m=>m.servizio_id===sv.id && /cassa/.test(m.motivo||''))).sort((a,b)=>(b.data+b.turno).localeCompare(a.data+a.turno)).slice(0,10);
+  const pezziDi = (sv, rep) => (RAW.mpiatti_mov||[]).filter(m=>m.servizio_id===sv.id && /cassa/.test(m.motivo||'') && repDi(PIA(m.piatto_id))===rep).reduce((s,m)=>s + +m.porzioni,0);
+  return `<h2 class="titolo">Rapporto di vendita</h2>
+  <p class="intro">Carica qui il file delle vendite scaricato da Tiller: l'app manda da sola i piatti alla cucina e bevande, pane e coperti alla sala.</p>
+  <div class="riga" style="margin-bottom:12px">
+    <label>Giorno<input type="date" id="sv-data" value="${ui.svData}"></label>
+    <label>Turno<select id="sv-turno"><option value="pranzo" ${ui.svTurno==='pranzo'?'selected':''}>Pranzo</option><option value="cena" ${ui.svTurno==='cena'?'selected':''}>Cena</option></select></label>
+  </div>
+  ${IMP ? vImport() : `<div class="pannello"><button class="btn" data-act="imp-scegli">Carica il rapporto della cassa</button>
+    <p class="nota">Da new.tillersystems.com: rapporto delle vendite per prodotto del giorno (CSV o Excel). Prima scegli qui sopra giorno e turno.</p></div>`}
+  <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,.txt" hidden>
+  ${ultimi.length?`<div class="pannello" style="margin-top:14px"><div class="pannello-titolo">Ultimi rapporti caricati</div>${tabella(['Giorno','Turno','#Cucina','#Sala','#Coperti',''], ultimi.map(sv=>`<tr>${td(dataIt(sv.data))}${td(esc(sv.turno||''))}${td(num(pezziDi(sv,'cucina'),0),1)}${td(num(pezziDi(sv,'sala'),0),1)}${td(sv.coperti!=null?num(sv.coperti,0):'—',1)}<td><button class="btn sec picc" data-act="rv-apri" data-d="${sv.data}" data-t="${esc(sv.turno||'')}">Vedi</button></td></tr>`))}</div>`:''}
+  ${vRapportoGiorno()}
+  ${vVociSaltate()}`;
+}
+
+/* tutte le voci della cassa che si saltano: si possono associare da qui */
+function vVociSaltate(){
+  const salt = (RAW.abbina||[]).filter(a=>a.ignora).sort((a,b)=>a.nome_cassa.localeCompare(b.nome_cassa,'it'));
+  const art = (RAW.piatti||[]).filter(p=>p.attivo);
+  const gruppi = (rep, pors, et) => pors.map(po=>{ const l=art.filter(p=>repDi(p)===rep && p.portata===po).sort(byNome); return l.length?`<optgroup label="${et} · ${esc(po)}">${l.map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')}</optgroup>`:''; }).join('');
+  const OPZ = `<option value="ignora" selected>Salta: non scarica niente</option>` + gruppi('cucina', POR_CUCINA, 'Cucina') + gruppi('sala', POR_SALA, 'Sala');
+  return det('rv-saltate','Voci della cassa non associate', salt.length ? `<form id="f-saltate">${tabella(['Voce della cassa (come scritta, semplificata)','Associala a'], salt.map(a=>`<tr>${td(esc(a.nome_cassa))}<td><select class="imp-sel salt" name="s_${a.id}" aria-label="Associa ${esc(a.nome_cassa)}">${OPZ}</select></td></tr>`))}
+    <div style="margin-top:12px"><button class="btn" type="submit">Salva le associazioni</button></div>
+    <p class="nota">Vale dal prossimo rapporto caricato. Per correggere un giorno già caricato: annulla il rapporto di quel giorno e ricaricalo.</p></form>`
+    : '<p class="vuoto">Nessuna voce saltata.</p>', salt.length ? salt.length+' voci' : '');
+}
+/* cosa ha caricato il rapporto di vendita in un giorno: piatti, articoli, coperti e cosa hanno scaricato */
+function vRapportoGiorno(){
+  const giorno = ui.rvData || ui.svData;
+  const svs = (RAW.servizi||[]).filter(x=>x.data===giorno && (ui.rvTurno==='tutti' || x.turno===ui.rvTurno));
+  const ids = new Set(svs.map(x=>x.id));
+  const mp = (RAW.mpiatti_mov||[]).filter(m=>ids.has(m.servizio_id) && /cassa/.test(m.motivo||''));
+  const cop = svs.reduce((s,x)=>s + (+x.coperti||0), 0);
+  const movCop = (RAW.movimenti||[]).filter(m=>ids.has(m.servizio_id) && m.tipo==='coperti');
+  const prima = REP; const sezioni = [];
+  try{
+    for(const r of ['cucina','sala']){
+      REP = r; applicaReparto();
+      const mie = mp.filter(m=>PI(m.piatto_id));
+      const perPiatto = new Map();
+      for(const m of mie){ const x = perPiatto.get(m.piatto_id) || {q:0, note:[], mids:[]}; x.q += +m.porzioni; x.mids.push(m.id); const n=(m.motivo||'').replace(/^dalla cassa( · )?/,''); if(n) x.note.push(n); perPiatto.set(m.piatto_id, x); }
+      const righe = [...perPiatto.entries()].map(([pid,x])=>{ const p=PI(pid);
+        const ingr = new Map(); for(const mv of S.movimenti.filter(mv=>x.mids.includes(mv.movimento_piatto_id))){ ingr.set(mv.prodotto_id, (ingr.get(mv.prodotto_id)||0) + +mv.quantita); }
+        const costoM = [...ingr.entries()].reduce((s,[id,q])=>s + q*costo(id), 0);
+        const ingrTxt = [...ingr.entries()].map(([id,q])=>`${esc(P(id)?.nome||'?')} <b>${fq(id,q)}</b>`).join('<br>');
+        return {p, q:x.q, note:[...new Set(x.note)].join('; '), ingr, ingrTxt, costoM}; }).sort((a,b)=>(a.p.portata||'').localeCompare(b.p.portata||'') || byNome(a.p,b.p));
+      const extra = r==='sala' ? movCop.filter(m=>P(m.prodotto_id)).map(m=>({p:P(m.prodotto_id), q:+m.quantita, qTxt:fq(m.prodotto_id,+m.quantita), costoM:+m.quantita*costo(m.prodotto_id)})) : [];
+      sezioni.push({r, righe, extra});
+    }
+  } finally { REP = prima; applicaReparto(); }
+  /* voci della cassa non associate: saltate nel rapporto del giorno, e piatti/articoli senza scheda */
+  const rapp = (RAW.rapporti||[]).filter(x=>x.data===giorno && (ui.rvTurno==='tutti' || x.turno===ui.rvTurno));
+  const saltate = new Map(); for(const x of rapp) for(const v of (x.voci||[])) if(!v.pid){ const y=saltate.get(v.k)||{nome:v.nome, cat:v.cat, q:0}; y.q+=+v.q; saltate.set(v.k,y); }
+  const senzaSch = sezioni.flatMap(z=>z.righe.filter(x=>!x.ingr.size).map(x=>({nome:x.p.nome, q:x.q, r:z.r})));
+  const nonAss = `<div class="gruppo-titolo" style="margin-top:18px">Non associato</div>
+    ${rapp.length ? (saltate.size ? tabella(['Voce della cassa (saltata)','Categoria','#Quantità'], [...saltate.values()].sort((a,b)=>b.q-a.q).map(y=>`<tr>${td(esc(y.nome))}${td(esc(y.cat||''))}${td(num(y.q,0),1)}</tr>`)) : '<p class="nota">Nessuna voce saltata.</p>')
+      : '<p class="nota">Le voci saltate si vedono per i rapporti caricati da adesso in poi.</p>'}
+    ${senzaSch.length ? tabella(['Associato ma senza scheda: non scarica niente','Reparto','#Quantità'], senzaSch.map(x=>`<tr>${td(esc(x.nome))}${td(x.r==='cucina'?'Cucina':'Sala')}${td(num(x.q,0),1)}</tr>`)) : ''}`;
+  const blocco = ({r, righe, extra}) => {
+    if(!righe.length && !extra.length) return `<div class="gruppo-titolo" style="margin-top:16px">${r==='cucina'?'Cucina':'Sala'}</div><p class="vuoto">Niente.</p>`;
+    const tot = righe.reduce((s,x)=>s+x.costoM,0) + extra.reduce((s,x)=>s+x.costoM,0);
+    return `<div class="gruppo-titolo" style="margin-top:16px">${r==='cucina'?'Cucina':'Sala'} · ${num(righe.reduce((s,x)=>s+x.q,0),0)} ${r==='cucina'?'porzioni':'articoli'} · merce ${eur(tot)}</div>
+    ${tabella([r==='cucina'?'Piatto':'Articolo','#Quantità','Cosa ha scaricato','#Costo merce'], [
+      ...righe.map(x=>`<tr>${td(esc(x.p.nome)+(x.note?`<small class="q">${esc(x.note)}</small>`:''))}${td(num(x.q,0),1)}<td>${x.ingr.size ? x.ingrTxt : '<span class="chip ambra">senza scheda: niente</span>'}</td>${td(eur(x.costoM),1)}</tr>`),
+      ...extra.map(x=>`<tr>${td(esc(x.p.nome)+'<small class="q">dai coperti</small>')}${td(x.qTxt,1)}<td>${esc(x.p.nome)} <b>${x.qTxt}</b></td>${td(eur(x.costoM),1)}</tr>`)])}`;
+  };
+  return det('rv-giorno','Cosa è stato caricato, giorno per giorno', `
+    <div class="riga" style="margin-top:12px">
+      <label>Giorno<input type="date" id="rv-data" value="${giorno}"></label>
+      <label>Turno<select id="rv-turno">${[['tutti','Tutti e due'],['pranzo','Pranzo'],['cena','Cena']].map(([k,l])=>`<option value="${k}" ${ui.rvTurno===k?'selected':''}>${l}</option>`).join('')}</select></label>
+      <button class="btn sec" data-act="rv-sposta" data-g="-1">← Giorno prima</button><button class="btn sec" data-act="rv-sposta" data-g="1">Giorno dopo →</button>
+    </div>
+    ${mp.length || movCop.length ? `
+      <div class="calc"><div><span>Coperti</span><b>${cop?num(cop,0):'—'}</b></div><div><span>Voci della cassa registrate</span><b>${num(mp.length,0)}</b></div></div>
+      ${sezioni.map(blocco).join('')}
+      ${nonAss}
+      <div style="margin-top:14px"><button class="btn sec" data-act="rv-annulla" data-d="${giorno}">Annulla il rapporto di questo giorno${ui.rvTurno!=='tutti'?' ('+esc(ui.rvTurno)+')':''}</button></div>
+      <p class="nota">Annullare cancella le vendite caricate dalla cassa e lo scarico dei coperti: la merce torna in magazzino come prima. Poi puoi ricaricare il file.</p>`
+    : '<p class="vuoto">Nessun rapporto caricato in questo giorno.</p>'}`, dataIt(giorno));
 }
 
 /* ===== CARICHI ===== */
@@ -1885,6 +2039,7 @@ document.addEventListener('input', e=>{
   if(e.target.closest('#f-coperti')) aggiornaCoperti();
   if(e.target.name==='cerca') esitoCerca(e.target.form);
   if(e.target.id==='conta-cerca' || e.target.id==='conta-cat') filtraConta();
+  if(e.target.closest('#f-ordine') && e.target.id!=='ord-testo') aggiornaOrdine();
   if(e.target.id==='pr-cerca'){ const t=e.target.value.trim().toLowerCase(); let n=0; document.querySelectorAll('tr[data-nome]').forEach(r=>{ const ok=!t||r.dataset.nome.includes(t); r.style.display=ok?'':'none'; if(ok) n++; }); const c=$('#pr-conta'); if(c) c.textContent=n+' prodotti'; }
   if(e.target.id==='sc-cerca'){ const t=e.target.value.trim().toLowerCase(); document.querySelectorAll('.card[data-nome]').forEach(c=>c.style.display = !t || c.dataset.nome.includes(t) ? '' : 'none'); }
   if(e.target.closest('#f-carico')) aggiornaCalcCarico();
@@ -1905,9 +2060,11 @@ document.addEventListener('change', e=>{
   if(id==='co-da'){ ui.coDa=e.target.value; render(); }
   if(id==='co-a'){ ui.coA=e.target.value; render(); }
   if(id==='cf-cat'){ ui.cfCat=e.target.value; render(); }
-  if(id==='imp-file' && e.target.files[0]){ const file=e.target.files[0]; e.target.value=''; busy(true); leggiFileCassa(file).then(()=>{ OPEN.add('ss-vendite'); render(); }).catch(err=>toast('Non riesco a leggere il file: '+(err.message||err),'err')).finally(()=>busy(false)); }
+  if(id==='rv-data'){ ui.rvData=e.target.value; OPEN.add('rv-giorno'); render(); }
+  if(id==='rv-turno'){ ui.rvTurno=e.target.value; OPEN.add('rv-giorno'); render(); }
+  if(id==='imp-file' && e.target.files[0]){ const file=e.target.files[0]; e.target.value=''; busy(true); leggiFileCassa(file).then(()=>{ render(); }).catch(err=>toast('Non riesco a leggere il file: '+(err.message||err),'err')).finally(()=>busy(false)); }
   if(id==='imp-col-nome' || id==='imp-col-qta'){ IMP[id==='imp-col-nome'?'iNome':'iQta'] = +e.target.value; impCalcola(); render(); }
-  if(e.target.classList.contains('imp-sel') && IMP){ IMP.voci[+e.target.dataset.i].pid = e.target.value; e.target.closest('tr').classList.toggle('imp-da', !e.target.value); const n=IMP.voci.filter(v=>!v.pid).length; const c=$('#imp-conta'); if(c) c.textContent = n?`${n} voci da abbinare (in giallo).`:'Tutte le voci sono abbinate.'; }
+  if(e.target.classList.contains('imp-sel') && !e.target.classList.contains('salt') && IMP){ IMP.voci[+e.target.dataset.i].pid = e.target.value; const y=window.scrollY; render(); window.scrollTo(0,y); }
   if(e.target.closest('#f-porta')) aggiornaPorta();
   if(e.target.closest('#f-carico')) aggiornaCalcCarico();
   if(e.target.closest('#f-produzione')) aggiornaProduzione();
@@ -1921,9 +2078,12 @@ document.addEventListener('click', e=>{
   switch(act){
     case 'esci': sb.auth.signOut(); break;
     case 'rep': {
-      const r=t.dataset.r; if(r===REP) break;
+      const r=t.dataset.r;
+      if(r==='cassa'){ ui.vista='cassa'; render(); window.scrollTo(0,0); break; }
+      if(ui.vista==='cassa'){ ui.vista=null; if(r===REP){ render(); window.scrollTo(0,0); break; } }
+      if(r===REP) break;
       if(CG) CG.aperta=false; cgSalva();
-      REP=r; IMP=null; try{ localStorage.setItem('22reparto', r); }catch{}
+      REP=r; IMP=null; ui.ordine=null; try{ localStorage.setItem('22reparto', r); }catch{}
       Object.assign(ui, {editProdotto:null, editFornitore:null, corrProd:null, editPiatto:null, editMenu:null, catFiltro:'tutte', filtroCatProd:'tutte', filtroForn:'tutti', stProd:'tutti', cfCat:'tutte', incasso:''});
       applicaReparto(); cgCarica(); render(); cgRender(); window.scrollTo(0,0); break;
     }
@@ -1978,6 +2138,28 @@ document.addEventListener('click', e=>{
     case 'tov-nuovo': ui.editTov='new'; OPEN.add('tv-pezzi'); render(); break;
     case 'tov-modifica': ui.editTov=id; OPEN.add('tv-pezzi'); render(); document.getElementById('f-tov-pezzo')?.scrollIntoView({behavior:'smooth',block:'center'}); break;
     case 'tov-chiudi': ui.editTov=null; render(); break;
+    case 'vai-cassa': ui.vista='cassa'; render(); window.scrollTo(0,0); break;
+    case 'rv-apri': ui.rvData=t.dataset.d; ui.rvTurno=t.dataset.t||'tutti'; OPEN.add('rv-giorno'); render(); document.getElementById('rv-giorno')?.scrollIntoView({behavior:'smooth'}); break;
+    case 'rv-sposta': ui.rvData=addDays(ui.rvData||ui.svData, +t.dataset.g); OPEN.add('rv-giorno'); render(); break;
+    case 'rv-annulla': {
+      const g=t.dataset.d; const svs=(RAW.servizi||[]).filter(x=>x.data===g && (ui.rvTurno==='tutti'||x.turno===ui.rvTurno)); const ids=new Set(svs.map(x=>x.id));
+      const mp=(RAW.mpiatti_mov||[]).filter(m=>ids.has(m.servizio_id) && /cassa/.test(m.motivo||'')); const mc=(RAW.movimenti||[]).filter(m=>ids.has(m.servizio_id) && m.tipo==='coperti');
+      if(!confirm(`Annullare il rapporto del ${dataIt(g)}? Si cancellano ${mp.length} vendite dalla cassa e lo scarico dei coperti.`)) break;
+      const rr=(RAW.rapporti||[]).filter(x=>x.data===g && (ui.rvTurno==='tutti'||x.turno===ui.rvTurno));
+      run(async ()=>{ for(const m of mp) await del('movimenti_piatti', m.id); for(const m of mc) await del('movimenti', m.id); for(const x of svs) await upd('servizi', x.id, {coperti:null}); for(const x of rr) await del('cassa_rapporti', x.id); }, 'Rapporto annullato: la merce è tornata in magazzino');
+      break;
+    }
+    case 'ordina': ui.ordine = ui.ordine===t.dataset.f ? null : t.dataset.f; render(); if(ui.ordine) setTimeout(()=>{ aggiornaOrdine(); document.getElementById('f-ordine')?.scrollIntoView({behavior:'smooth',block:'start'}); }, 30); break;
+    case 'ordina-wa': {
+      const txt=$('#ord-testo').value.trim(); if(!txt) return toast('Scrivi almeno una quantità.','err');
+      const tel=t.dataset.tel, q=encodeURIComponent(txt);
+      const android = /Android/i.test(navigator.userAgent);
+      if(t.dataset.b && android){ location.href = `intent://send?phone=${tel}&text=${q}#Intent;scheme=whatsapp;package=com.whatsapp.w4b;end`; break; }
+      const url = `https://wa.me/${tel}?text=${q}`;
+      const w = window.open(url, '_blank'); if(!w) location.href = url;
+      break;
+    }
+    case 'ordina-copia': { const txt=$('#ord-testo').value; (navigator.clipboard?.writeText(txt)||Promise.reject()).then(()=>toast('Messaggio copiato')).catch(()=>{ $('#ord-testo').select(); document.execCommand('copy'); toast('Messaggio copiato'); }); break; }
     case 'imp-scegli': $('#imp-file')?.click(); break;
     case 'imp-annulla': IMP=null; render(); break;
     case 'del-conta': if(confirm('Cancellare questa conta? Si annullano anche le differenze che ha registrato.')) run(()=>del('conte',id),'Conta cancellata'); break;
@@ -2014,9 +2196,22 @@ document.addEventListener('submit', async e=>{
   switch(f.id){
     case 'f-tov-pezzo': {
       const nome=v('nome').trim(); if(!nome) return toast('Serve il nome.','err');
-      const row={nome, ultimo_prezzo:nOrNull('prezzo'), pezzi_per_coperto:nOrNull('ppc')};
+      const row={nome, ultimo_prezzo:nOrNull('prezzo'), pezzi_per_coperto:nOrNull('ppc'), dotazione:nOrNull('dot')};
       const id=f.dataset.id;
       run(async ()=>{ if(id==='new') await ins('prodotti',{...row, categoria:'tovagliato', unita:'pz', reparto:'sala', confezione:'pezzo', um_acquisto:'PZ', contenuto_conf:1, iva_pct:22}); else await upd('prodotti', id, row); ui.editTov=null; }, 'Pezzo salvato');
+      break;
+    }
+    case 'f-tov-pass': {
+      const data=v('data')||localISO(); const pezzi=S.prodotti.filter(p=>p.categoria==='tovagliato' && p.attivo);
+      const righe=pezzi.map(p=>({p, r:parseN(v('r_'+p.id)), q:parseN(v('q_'+p.id)), pp:parseN(v('p_'+p.id))})).filter(x=>x.r>0 || x.q>0);
+      if(!righe.length) return toast('Scrivi almeno un numero.','err');
+      if(righe.some(x=>x.q>0 && !(x.pp>0))) return toast('Per i consegnati serve il prezzo a pezzo.','err');
+      const car=righe.filter(x=>x.q>0), rit=righe.filter(x=>x.r>0);
+      run(async ()=>{
+        if(rit.length) await ins('movimenti', rit.map(x=>({data, prodotto_id:x.p.id, tipo:'reso', quantita:x.r, motivo:'ritirato dalla lavanderia'})));
+        if(car.length){ await ins('carichi', car.map(x=>({data, prodotto_id:x.p.id, fornitore:nomeForn(x.p)||'lavanderia', peso_acquistato_g:x.q, peso_pulito_g:x.q, quantita:x.q, prezzo:+(x.q*x.pp).toFixed(2), costo_unitario:x.pp, tipo:'acquisto', note:'consegna lavanderia'})));
+          for(const x of car) await upd('prodotti', x.p.id, {ultimo_prezzo:x.pp, ultima_quantita:x.q, data_ultima_fattura:data}); }
+      }, 'Passaggio registrato: '+righe.map(x=>`${x.p.nome.toLowerCase()} ritirati ${num(x.r,0)}, consegnati ${num(x.q,0)}`).join('; '));
       break;
     }
     case 'f-tov-cons': {
@@ -2048,25 +2243,45 @@ document.addEventListener('submit', async e=>{
         mov.length ? `Conta salvata: ${mov.length} differenz${mov.length===1?'a':'e'}` : 'Conta salvata: i conti tornano');
       break;
     }
+    case 'f-saltate': {
+      const righe = (RAW.abbina||[]).filter(a=>a.ignora).map(a=>({a, v:v('s_'+a.id)})).filter(x=>x.v && x.v!=='ignora');
+      if(!righe.length) return toast('Non hai cambiato niente.','err');
+      run(async ()=>{ for(const {a,v:pid} of righe) await upd('cassa_abbinamenti', a.id, {piatto_id:pid, ignora:false, reparto:repDi(PIA(pid))}); }, `Associate ${righe.length} voci`);
+      break;
+    }
     case 'f-import': {
       if(!IMP) return;
       const mancano = IMP.voci.filter(v=>!v.pid);
-      if(mancano.length) return toast(`Abbina o salta tutte le voci: ne mancano ${mancano.length}.`,'err');
-      const vendi = IMP.voci.filter(v=>v.pid!=='ignora' && PI(v.pid));
-      const senza = [...new Set(vendi.filter(v=>!compPiatto(v.pid).length).map(v=>PI(v.pid).nome))];
-      const abb = IMP.voci.map(v=>({nome_cassa:v.k, piatto_id:v.pid==='ignora'?null:v.pid, ignora:v.pid==='ignora', reparto:REP}));
-      const tot = vendi.reduce((s,v)=>s+v.q,0);
+      if(mancano.length) return toast(`Decidi tutte le voci: ne mancano ${mancano.length} (in giallo).`,'err');
+      const vendi = IMP.voci.filter(v=>v.pid!=='ignora' && PIA(v.pid));
+      const cuc = vendi.filter(v=>repDi(PIA(v.pid))==='cucina'), sal = vendi.filter(v=>repDi(PIA(v.pid))==='sala');
+      const abb = IMP.voci.map(v=>({nome_cassa:v.k, piatto_id:v.pid==='ignora'?null:v.pid, ignora:v.pid==='ignora', reparto: v.pid==='ignora' ? 'sala' : repDi(PIA(v.pid))}));
+      const coperti = IMP.coperti!=null && $('#imp-coperti')?.checked ? IMP.coperti : null;
+      const repPrima = REP; const senza=[], surplus=[];
       run(async ()=>{
-        const sv = await ensureServizio();
-        for(const v of vendi) await movimentoPiatto(PI(v.pid), 'venduto', v.q, {da:'magazzino', servizio_id:sv.id, motivo:'dalla cassa'});
-        const {error} = await sb.from('cassa_abbinamenti').upsert(abb, {onConflict:'nome_cassa'}); if(error) throw error;
-        const agg = vendi.length ? {chiuso:true} : {};
-        if(IMP.coperti!=null && $('#imp-coperti')?.checked) agg.coperti = IMP.coperti;
-        if(Object.keys(agg).length) await upd('servizi', sv.id, agg);
-        if(agg.coperti!=null) await scaricaTovagliato(sv, agg.coperti);
-        IMP = null;
-        if(senza.length) setTimeout(()=>toast('Registrato. Senza scheda, non hanno scaricato niente: '+senza.join(', '),'err'), 60);
-      }, `Venduto dalla cassa registrato: ${num(tot,0)} articoli`);
+        try{
+          const sv = await ensureServizio();
+          if(cuc.length){ REP='cucina'; applicaReparto();
+            /* stesso piatto da carta e da percorso: si somma, così la linea si scarica una volta sola */
+            const perPiatto = new Map(); for(const v of cuc){ const x=perPiatto.get(v.pid)||{q:0,perc:0}; x.q+=v.q; if(v.perc) x.perc+=v.q; perPiatto.set(v.pid,x); }
+            for(const [pid,x] of perPiatto){ const p=PI(pid); if(!p) continue; if(!compPiatto(p.id).length) senza.push(p.nome);
+              const nota = x.perc===x.q ? 'dalla cassa · percorso' : x.perc ? `dalla cassa · ${num(x.q-x.perc,0)} carta, ${num(x.perc,0)} percorso` : 'dalla cassa · carta';
+              const lin=Math.max(porzioniLinea(p.id),0), daLinea=Math.min(x.q,lin), resto=x.q-daLinea;
+              if(daLinea>0) await movimentoPiatto(p,'venduto',daLinea,{da:'linea',servizio_id:sv.id,motivo:nota});
+              if(resto>0){ surplus.push(p.nome); await movimentoPiatto(p,'surplus',resto,{da:'magazzino',servizio_id:sv.id,motivo:nota+' (oltre la linea)'}); } } }
+          if(sal.length || coperti!=null){ REP='sala'; applicaReparto();
+            for(const v of sal){ const p=PI(v.pid); if(!p) continue; if(!compPiatto(p.id).length) senza.push(p.nome);
+              await movimentoPiatto(p,'venduto',v.q,{da:'magazzino',servizio_id:sv.id,motivo:'dalla cassa'}); }
+            if(coperti!=null){ await upd('servizi', sv.id, {coperti}); await scaricaTovagliato(sv, coperti); } }
+          const {error} = await sb.from('cassa_abbinamenti').upsert(abb, {onConflict:'nome_cassa'}); if(error) throw error;
+          await ins('cassa_rapporti', {data:ui.svData, turno:ui.svTurno, servizio_id:sv.id, nome_file:IMP.nomeFile, coperti,
+            voci: IMP.voci.map(v=>({nome:v.nome, k:v.k, cat:v.cat||'', q:v.q, perc:!!v.perc, pid:v.pid==='ignora'?null:v.pid, reparto:v.pid==='ignora'?null:repDi(PIA(v.pid))}))});
+          if(vendi.length) await upd('servizi', sv.id, {chiuso:true});
+          IMP = null;
+        } finally { REP = repPrima; applicaReparto(); }
+        const msg=[]; if(senza.length) msg.push('senza scheda, non hanno scaricato: '+[...new Set(senza)].join(', '));
+        if(msg.length) setTimeout(()=>toast('Registrato. '+msg.join('. '),'err'), 60);
+      }, `Registrato: cucina ${num(cuc.reduce((s,v)=>s+v.q,0),0)}, sala ${num(sal.reduce((s,v)=>s+v.q,0),0)}${coperti!=null?', '+coperti+' coperti':''}`);
       break;
     }
     case 'f-coperti': {
