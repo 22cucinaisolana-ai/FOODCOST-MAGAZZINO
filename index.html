@@ -480,7 +480,14 @@ const nomeForn = p => F(p.fornitore_id)?.nome || p.fornitore || '';
 function fq(pid, q){
   const p = typeof pid==='object' ? pid : P(pid); if(!p) return num(q);
   const u = U[p.unita]; const neg = q<0 ? '−' : ''; const a = Math.abs(q);
-  if(isBott(p)) return neg+num(a/+p.contenuto_conf,2)+' bott.';
+  if(isBott(p)){
+    /* le bottiglie aperte si leggono a calici: 21 bott. + 4 calici è più chiaro di 21,8 */
+    const cc=+p.contenuto_conf, intere=Math.floor(a/cc+1e-9), resto=a-intere*cc;
+    const cal=Math.round(resto/(cc/5)*2)/2;
+    if(cal<=0.01) return neg+num(intere,0)+' bott.';
+    if(cal>=5) return neg+num(intere+1,0)+' bott.';
+    return neg+(intere?num(intere,0)+' bott. + ':'')+num(cal,cal%1?1:0)+(cal===1?' calice':' calici');
+  }
   if(p.unita==='pz'){
     /* quello che si compra a casse o confezioni si legge a casse; sotto le 6 casse, a pezzi */
     const c = +p.contenuto_conf; 
