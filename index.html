@@ -137,6 +137,7 @@ body:not(.aiuto-on) .aiuto, body:not(.aiuto-on) .aiuto-campo{display:none}
 @media (max-width:600px){ .top .lungo{display:none} .top .corto{display:inline} header.top{gap:10px} }
 /* importazione dalla cassa */
 .imp-sel{min-width:220px;width:100%}
+.calici{background:var(--verde-bg);border-radius:8px;padding:10px 12px;font-size:15px;margin:10px 0 0}
 .chip{white-space:nowrap}
 .imp-da{background:var(--ambra-bg)}
 /* conta guidata (telefono) */
@@ -384,7 +385,7 @@ const AIUTO_CAMPI = {
   'S:f-carico.prezzo':"Il totale della riga in fattura, senza IVA.",
   'S:f-carico.comprato':"Quante bottiglie o pezzi.",
   'f-crea-art.prezzo_intero':"Il prezzo in carta della bottiglia o del pezzo.",
-  'f-crea-art.ml':"Il calice è 1/5 di bottiglia (150 ml in una 0,75). Per i distillati, i ml del bicchiere.",
+  'f-crea-art.quanti':"Quanti calici escono da una bottiglia: 5 vuol dire 150 ml in una 0,75.",
   'f-crea-art.prezzo_calice':"Il prezzo in carta del calice o del bicchiere.",
   'f-piatto.prezzo':"Serve a calcolare incasso e costo ogni 100 €."
 };
@@ -963,7 +964,31 @@ function vHome(){
 
   <div class="numeri">${numeri.join('')}</div>
 
+  ${vDaCompletare()}
+
   ${sistemare.length?`<div class="pannello"><div class="pannello-titolo">Da sistemare</div>${sistemare.map(x=>`<p style="margin:8px 0">${x}</p>`).join('')}</div>`:''}`;
+}
+
+/* informazioni che mancano e che rendono sbagliati i conti */
+function vDaCompletare(){
+  const att = S.prodotti.filter(p=>p.attivo && p.categoria!=='preparazione');
+  const art = S.piatti.filter(p=>p.attivo);
+  const fornUsati = [...new Set(att.map(p=>p.fornitore_id).filter(Boolean))].map(id=>F(id)).filter(Boolean);
+  const gruppi = [
+    {t:'Senza prezzo d\'acquisto', p:'il costo della merce risulta zero', lista:att.filter(p=>!costo(p.id)).map(p=>({n:p.nome, a:`data-tab="magazzino" data-edit="${p.id}"`}))},
+    {t:'Senza fornitore', p:'non entrano nell\'ordine su WhatsApp', lista:att.filter(p=>!p.fornitore_id).map(p=>({n:p.nome, a:`data-tab="magazzino" data-edit="${p.id}"`}))},
+    {t:'Fornitori senza telefono', p:'l\'ordine su WhatsApp non trova la chat', lista:fornUsati.filter(f=>!f.telefono).map(f=>({n:f.nome, a:`data-tab="magazzino" data-fornitore="${f.id}"`}))},
+    {t:SALA()?'Articoli senza scheda':'Piatti senza scheda', p:'quando si vendono non scaricano niente', lista:art.filter(p=>!compPiatto(p.id).length).map(p=>({n:p.nome, a:`data-tab="schede" data-piatto="${p.id}"`}))},
+    SALA() && {t:'Articoli senza prezzo in carta', p:'non si calcola quanto costa la merce ogni 100 €', lista:art.filter(p=>!(+p.prezzo>0) && p.portata!=='degustazione vini').map(p=>({n:p.nome, a:`data-tab="schede" data-piatto="${p.id}"`}))},
+    SALA() && {t:'Tovagliato da completare', p:'senza «pezzi per coperto» o senza dotazione non si scarica da solo', lista:att.filter(p=>p.categoria==='tovagliato' && (!(+p.pezzi_per_coperto>0) || p.dotazione==null)).map(p=>({n:p.nome, a:`data-tab="tovagliato"`}))},
+    {t:'Senza scorta minima', p:'l\'avviso di riordino si basa solo sui consumi', lista:att.filter(p=>p.scorta_minima==null && !NON_FOOD.has(p.categoria)).map(p=>({n:p.nome, a:`data-tab="magazzino" data-edit="${p.id}"`}))}
+  ].filter(Boolean).filter(g=>g.lista.length);
+  if(!gruppi.length) return '';
+  const tot = gruppi.reduce((s,g)=>s+g.lista.length,0);
+  return `<div class="pannello"><div class="pannello-titolo">Informazioni da completare <span class="chip ambra">${tot}</span></div>
+    <p class="aiuto">Finché mancano questi dati i conti restano incompleti. Tocca un nome per aprirlo e sistemarlo.</p>
+    ${gruppi.map(g=>`<div class="gruppo-titolo" style="margin-top:14px">${g.t} · ${g.lista.length}<small style="display:block;font-weight:500;color:var(--grigio);text-transform:none;letter-spacing:0">${g.p}</small></div>
+      <div class="riga" style="gap:6px">${g.lista.slice(0,12).map(x=>`<button class="btn sec picc" ${x.a}>${esc(x.n)}</button>`).join('')}${g.lista.length>12?`<span class="nota" style="align-self:center">e altri ${g.lista.length-12}</span>`:''}</div>`).join('')}</div>`;
 }
 
 /* ===== ORDINE AL FORNITORE SU WHATSAPP ===== */
@@ -1545,6 +1570,9 @@ function vDettaglioPiatto(p){
   ${boxCosti(t, SALA()?'Costo di un articolo':'Costo di una porzione', `<div class="numero"><span>${SALA()?'Se ne possono vendere ancora':'Porzioni possibili col magazzino'}</span><b>${righe.length?num(porzioniPossibili(p.id),0):'—'}</b></div>${+p.prezzo>0?`<div class="numero"><span>Prezzo · merce ogni 100 €</span><b>${eur(+p.prezzo)}</b><small style="display:block;color:var(--grigio);font-weight:600">${t.senza>0?eur(t.senza/prezzoNetto(p)*100)+' ogni 100 € incassati':''}</small></div>`:''}`)}
   <div class="pannello">
     <div class="pannello-titolo">${SALA()?'Cosa scarica un articolo venduto':'Ingredienti di una porzione'}</div>
+    ${(()=>{ const c=compPiatto(p.id); if(!SALA() || c.length!==1) return ''; const pr=P(c[0].prodotto_id); if(!isBott(pr)) return '';
+      const n=+pr.contenuto_conf/+c[0].quantita; if(!(n>1.1)) return '';
+      return `<p class="calici">Da una bottiglia di ${esc(pr.nome)} escono <b>${num(n,n%1?1:0)}</b> ${p.portata==='degustazione vini'?'assaggi':'calici'} come questo.</p>`; })()}
     <p class="aiuto">${SALA()?'Quello che esce dal magazzino ogni volta che l\'articolo si vende: per esempio 1 bottiglia, oppure 125 ml per un calice, oppure 1 cialda. Si può scrivere in bottiglie (bott.), ml o pezzi.':'Tutto quello che va in UNA porzione, già pulito, come si pesa in cucina. Il costo si aggiorna da solo quando cambiano i prezzi.'}</p>
     ${t.html}
     ${formIngrediente('f-pcomp',`data-piatto="${p.id}"`)}
@@ -1594,12 +1622,12 @@ function vCreaArticoli(p){
     ${sfuso && !(+p.contenuto_conf>0) ? '<div class="avviso">Prima scrivi il contenuto della bottiglia (es. 750) e salva il prodotto.</div>' : `
     <form id="f-crea-art" class="griglia" data-id="${p.id}">
       <label>Prezzo ${vino?'della bottiglia':'a pezzo'} (€)<input name="prezzo_intero" inputmode="decimal" placeholder="vuoto = non si vende intero"></label>
-      ${sfuso?`<label>${vino?'Millilitri per calice':'Millilitri per bicchiere'}<input name="ml" inputmode="decimal" value="${vino?num(+p.contenuto_conf/5,2):dist?40:''}"></label>
+      ${sfuso?`<label>${vino?'Calici da una bottiglia':'Bicchieri da una bottiglia'}<input name="quanti" inputmode="decimal" value="${vino?5:dist?Math.round(+p.contenuto_conf/40):''}"></label>
       <label>Prezzo ${vino?'del calice':'del bicchiere'} (€)<input name="prezzo_calice" inputmode="decimal" placeholder="vuoto = non si vende sfuso"></label>`:''}
-      ${vino?`<label style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600"><input type="checkbox" name="deg" style="min-height:auto;width:20px;height:20px"> Anche in degustazione (1/8 di bottiglia, ${num(+p.contenuto_conf/8,2)} ml, prezzo 0)</label>`:''}
+      ${vino?`<label style="grid-column:1/-1;flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600"><input type="checkbox" name="deg" style="min-height:auto;width:20px;height:20px"> Anche in degustazione: 8 assaggi da una bottiglia, prezzo 0</label>`:''}
       <button class="btn" type="submit">Crea articoli</button>
     </form>
-    ${vino?'<p class="nota">Calice = 1/5 di bottiglia. Degustazione = 1/8 di bottiglia.</p>':''}`}</div>`;
+    ${vino?`<p class="nota">5 calici da una bottiglia da ${fq(p,+p.contenuto_conf)}, quindi ${num(+p.contenuto_conf/5,0)} ml a calice. In degustazione 8 assaggi, ${num(+p.contenuto_conf/8,0)} ml l'uno.</p>`:''}`}</div>`;
 }
 
 /* ===== RESE ===== */
@@ -2073,7 +2101,7 @@ document.addEventListener('change', e=>{
 document.addEventListener('click', e=>{
   const thO = e.target.closest('th.ordinabile'); if(thO){ ordinaTabella(thO); return; }
   const t = e.target.closest('[data-tab],[data-act]'); if(!t) return;
-  if(t.dataset.tab){ ui.tab=t.dataset.tab; if(t.dataset.open) t.dataset.open.split(',').forEach(x=>OPEN.add(x)); if(t.dataset.edit){ ui.editProdotto=t.dataset.edit; OPEN.add('ma-prod'); } render(); window.scrollTo(0,0); return; }
+  if(t.dataset.tab){ ui.tab=t.dataset.tab; if(t.dataset.open) t.dataset.open.split(',').forEach(x=>OPEN.add(x)); if(t.dataset.edit){ ui.editProdotto=t.dataset.edit; OPEN.add('ma-prod'); } if(t.dataset.piatto){ ui.editPiatto=t.dataset.piatto; } if(t.dataset.fornitore){ ui.editFornitore=t.dataset.fornitore; OPEN.add('ma-forn'); } render(); window.scrollTo(0,0); return; }
   const act=t.dataset.act, id=t.dataset.id;
   switch(act){
     case 'esci': sb.auth.signOut(); break;
@@ -2320,11 +2348,12 @@ document.addEventListener('submit', async e=>{
     case 'f-crea-art': {
       const p=P(f.dataset.id); if(!p) return;
       const vino=VINI.has(p.categoria), dist=p.categoria==='distillati e amari';
-      const pi=nOrNull('prezzo_intero'), pc=f.elements['prezzo_calice']?nOrNull('prezzo_calice'):null, ml=f.elements['ml']?parseN(v('ml')):0;
+      const pi=nOrNull('prezzo_intero'), pc=f.elements['prezzo_calice']?nOrNull('prezzo_calice'):null;
+      const quanti=f.elements['quanti']?parseN(v('quanti')):0, ml=quanti>0?+p.contenuto_conf/quanti:0;
       const nuovi=[];
       if(pi!=null) nuovi.push({nome:p.nome+(p.annata?' '+p.annata:''), portata:FAM_DA_CAT[p.categoria]||'altro', prezzo:pi, q:p.unita==='ml'?+p.contenuto_conf:1});
-      if(pc!=null){ if(!(ml>0)) return toast('Scrivi i millilitri.','err'); nuovi.push({nome:p.nome+(vino?' (calice)':' (bicchiere)'), portata:vino?'vino al calice':(FAM_DA_CAT[p.categoria]||'altro'), prezzo:pc, q:ml}); }
-      if(f.elements['deg']?.checked) nuovi.push({nome:'Degustazione · '+p.nome, portata:'degustazione vini', prezzo:0, q:+(+p.contenuto_conf/8).toFixed(2)});
+      if(pc!=null){ if(!(ml>0)) return toast('Scrivi quanti calici escono da una bottiglia.','err'); nuovi.push({nome:p.nome+(vino?' (calice)':' (bicchiere)'), portata:vino?'vino al calice':(FAM_DA_CAT[p.categoria]||'altro'), prezzo:pc, q:ml}); }
+      if(f.elements['deg']?.checked) nuovi.push({nome:'Degustazione · '+p.nome, portata:'degustazione vini', prezzo:0, q:+(+p.contenuto_conf/8).toFixed(3)});
       if(!nuovi.length) return toast('Scrivi almeno un prezzo.','err');
       run(async ()=>{ for(const a of nuovi){ const d=await insOne('piatti',{nome:a.nome, portata:a.portata, prezzo:a.prezzo, reparto:'sala'}); await ins('piatto_componenti',{piatto_id:d.id, prodotto_id:p.id, quantita:a.q}); } }, `Creat${nuovi.length===1?'o':'i'} ${nuovi.length} articol${nuovi.length===1?'o':'i'}`);
       break;
