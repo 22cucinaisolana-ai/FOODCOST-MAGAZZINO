@@ -384,6 +384,10 @@ const AIUTO_CAMPI = {
   'S:f-prodotto.categoria':"Pane e coperto, tovagliato, materiali e pulizia stanno fuori dal costo delle bevande.",
   'S:f-carico.prezzo':"Il totale della riga in fattura, senza IVA.",
   'S:f-carico.comprato':"Quante bottiglie o pezzi.",
+  'f-calc.listino':"Il prezzo del fornitore a bottiglia, senza IVA e senza contare gli omaggi.",
+  'f-calc.pagate':"Quante bottiglie paghi in fattura.",
+  'f-calc.omaggio':"Quante ne arrivano gratis: abbassano il costo vero, non il prezzo in carta.",
+  'f-calc.coeff':"Lascialo com'è e il prezzo lo fa la regola della fascia. Se lo cambi, comanda il tuo numero: per tornare alla regola premi «Coefficiente consigliato».",
   'f-crea-art.prezzo_intero':"Il prezzo in carta della bottiglia o del pezzo.",
   'f-crea-art.quanti':"Quanti calici escono da una bottiglia: 5 vuol dire 150 ml in una 0,75.",
   'f-crea-art.prezzo_calice':"Il prezzo in carta del calice o del bicchiere.",
@@ -404,6 +408,9 @@ const AIUTO_SALA = {
   'co-famiglie':"Per ogni famiglia (vino in bottiglia, calici, acqua, caffè…) quanto si è incassato e quanto è costata la merce. «Merce ogni 100 €» è il costo delle bevande.",
   'rv-saltate':"Le voci della cassa che oggi l'app salta (menu, voci solo d'incasso…). Se una di queste è un piatto o una bevanda vera, associala qui: dal prossimo rapporto scaricherà il magazzino.",
   'rv-giorno':"Scegli un giorno e vedi cosa ha caricato il rapporto della cassa: piatti e articoli, quantità, cosa hanno scaricato dal magazzino e quanto costa la merce. Se qualcosa è sbagliato, puoi annullare il rapporto del giorno e ricaricarlo.",
+  'ca-calc':"Scrivi il prezzo di listino, quante bottiglie paghi e quante ne arrivano in omaggio. Il prezzo in carta si calcola sul listino, il costo vero sugli omaggi compresi.",
+  'ca-fasce':"Più la bottiglia costa, più il coefficiente scende: sulle importanti conta l'euro che resta, non il moltiplicatore. Sotto i 9 € vale invece il margine minimo.",
+  'ca-scrivi':"Porta il risultato dentro il tool: il costo vero sul prodotto e il prezzo in carta sull'articolo.",
   'tv-stato':"Puliti, sporchi da ritirare e totale da noi, confrontati con la dotazione di partenza. Il costo per coperto viene da prezzo a pezzo e pezzi per coperto.",
   'tv-pass':"Quando passa la lavanderia scrivi, per ogni pezzo, quanti sporchi ha ritirato e quanti puliti ha consegnato. I consegnati entrano nei puliti e sono la spesa.",
   'tv-cons':"Quando la lavanderia porta i puliti: quanti pezzi per tipo e il prezzo a pezzo. È la spesa del tovagliato.",
@@ -474,7 +481,13 @@ function fq(pid, q){
   const p = typeof pid==='object' ? pid : P(pid); if(!p) return num(q);
   const u = U[p.unita]; const neg = q<0 ? '−' : ''; const a = Math.abs(q);
   if(isBott(p)) return neg+num(a/+p.contenuto_conf,2)+' bott.';
-  if(p.unita==='pz') return neg+num(a,1)+' pz';
+  if(p.unita==='pz'){
+    /* quello che si compra a casse o confezioni si legge a casse; sotto le 6 casse, a pezzi */
+    const c = +p.contenuto_conf; 
+    if(p.reparto==='sala' && c>1 && a/c>=6){ const u=unitaOrdine(p); const n=Math.floor(a/c), r=Math.round(a-n*c);
+      return neg+num(n,0)+' '+(n===1?u.sing:u.plur)+(r?' + '+num(r,0)+' pz':''); }
+    return neg+num(a,1)+' pz';
+  }
   return a>=1000 ? neg+num(a/1000,2)+' '+(p.unita==='g'?'kg':'L') : neg+num(a,0)+' '+u.small;
 }
 /* costo per unita base mostrato al kg / litro / pezzo */
@@ -676,7 +689,7 @@ const td = (v, n) => `<td class="${n?'n':''}">${v}</td>`;
 /* ===== Render principale ===== */
 function render(){
   if(!ui.user){ renderLogin(); return; }
-  const tabs = SALA() ? [['home','Home'],['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['tovagliato','Tovagliato'],['schede','Articoli e prezzi'],['controllo','Controllo']]
+  const tabs = SALA() ? [['home','Home'],['servizio','Servizio'],['carichi','Carichi'],['magazzino','Cantina e magazzino'],['tovagliato','Tovagliato'],['schede','Articoli e prezzi'],['calcolatrice','Calcolatrice'],['controllo','Controllo']]
                      : [['home','Home'],['servizio','Servizio'],['carichi','Carichi'],['magazzino','Magazzino'],['schede','Schede e menu'],['rese','Rese'],['controllo','Controllo']];
   if(!tabs.some(t=>t[0]===ui.tab)) ui.tab='home';
   $('#app').innerHTML = `
@@ -691,10 +704,11 @@ function render(){
     </header>
     ${ui.vista==='cassa' ? '' : `<nav class="tabs" role="tablist">`}${ui.vista==='cassa' ? '' : tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" aria-selected="${ui.tab===k}">${l}</button>`).join('')+'</nav>'}
     <datalist id="dl-prodotti">${S.prodotti.filter(p=>p.attivo && isFood(p)).sort(byNome).map(p=>`<option value="${esc(p.nome)}"></option>`).join('')}</datalist>
-    <main>${ui.vista==='cassa' ? vCassa() : ({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab,home:vHome})[ui.tab]()}</main>`;
+    <main>${ui.vista==='cassa' ? vCassa() : ({servizio:vServizio,carichi:vCarichi,magazzino:vMagazzino,schede:vSchede,rese:vRese,controllo:vControllo,tovagliato:vTovagliatoTab,home:vHome,calcolatrice:vCalcVini})[ui.tab]()}</main>`;
   if(ui.tab==='servizio'){ aggiornaPorta(); aggiornaCoperti(); }
   if(ui.tab==='carichi'){ aggiornaCalcCarico(); aggiornaProduzione(); }
   if(ui.tab==='rese') aggiornaCalcolatrice();
+  if(ui.tab==='calcolatrice') aggiornaCalcVini();
   aggiungiAiuto($('#app'));
 }
 function renderLogin(msg=''){
@@ -991,6 +1005,94 @@ function vDaCompletare(){
       <div class="riga" style="gap:6px">${g.lista.slice(0,12).map(x=>`<button class="btn sec picc" ${x.a}>${esc(x.n)}</button>`).join('')}${g.lista.length>12?`<span class="nota" style="align-self:center">e altri ${g.lista.length-12}</span>`:''}</div>`).join('')}</div>`;
 }
 
+/* ===== CALCOLATRICE DEI VINI ===== */
+/* il coefficiente scende man mano che sale il costo della bottiglia */
+const FASCE = [[9,3],[15,3],[22,2.75],[30,2.5],[45,2.25],[1e9,2]];
+const MARGINE_MINIMO = 24;   /* € netti a bottiglia: stappare costa uguale, che sia un vino da 6 o da 15 € */
+const coeffFascia = c => (FASCE.find(f=>c<=f[0])||FASCE[FASCE.length-1])[1];
+/* prezzo netto consigliato: coefficiente, margine minimo, e mai meno della fascia precedente */
+function nettoConsigliato(costo){
+  const base = costo*coeffFascia(costo);
+  const minimo = costo + MARGINE_MINIMO;
+  let tetto = 0; /* quanto varrebbe la bottiglia più cara della fascia sotto */
+  for(const [lim,k] of FASCE){ if(costo>lim) tetto = Math.max(tetto, lim*k); }
+  return Math.max(base, minimo, tetto);
+}
+function coeffAuto(){
+  const f=$('#f-calc'); if(!f) return; const c=parseN(f.elements['listino'].value);
+  if(c>0 && !f.dataset.manuale) f.elements['coeff'].value = fmtIn(+(nettoConsigliato(c)/c).toFixed(2));
+}
+function calcVini(f){
+  const g = n => parseN(f.elements[n].value);
+  const listino=g('listino'), pagate=g('pagate'), omaggio=g('omaggio'), coeff=g('coeff');
+  const bott = pagate+omaggio;
+  const spesa = listino*pagate;
+  const reale = bott>0 ? spesa/bott : listino;
+  const auto = f.dataset.manuale ? 0 : 1;
+  const netto = auto ? nettoConsigliato(listino) : listino*coeff;
+  const carta = Math.round(netto*1.10);
+  const nettoCarta = carta/1.10;
+  return {listino, pagate, omaggio, bott, spesa, reale, coeff, netto, carta, nettoCarta,
+    margine: nettoCarta - listino, margineVero: nettoCarta - reale, sconto: (listino-reale)*bott,
+    ogni100: nettoCarta>0 ? listino/nettoCarta*100 : 0,
+    ogni100vero: nettoCarta>0 ? reale/nettoCarta*100 : 0,
+    calice: Math.round(carta/4), costoCalice: reale/5, costoDeg: reale/8};
+}
+function aggiornaCalcVini(){
+  const f=$('#f-calc'), box=$('#calc-out'); if(!f || !box) return;
+  const r = calcVini(f);
+  if(!(r.listino>0)){ box.innerHTML='<p class="nota">Scrivi il prezzo di listino della bottiglia.</p>'; return; }
+  box.innerHTML = `
+    <div class="equazione">
+      <div class="blocco"><small>Listino a bottiglia</small><b>${eur(r.listino)}</b></div><span class="op">×</span>
+      <div class="blocco"><small>Coefficiente</small><b>${num(r.listino>0?r.netto/r.listino:r.coeff,2)}</b></div><span class="op">=</span>
+      <div class="blocco fine"><small>Prezzo in carta</small><b>${eur(r.carta)}</b></div>
+    </div>
+    <div class="numeri">
+      <div class="numero"><span>Costo vero a bottiglia</span><b>${eur(r.reale)}</b><small style="display:block;color:var(--grigio);font-weight:600">${r.omaggio>0?`${num(r.pagate,0)} pagate + ${num(r.omaggio,0)} in omaggio`:'senza omaggi'}</small></div>
+      <div class="numero"><span>Margine sul listino</span><b>${eur(r.margine)}</b></div>
+      <div class="numero"><span>Margine vero</span><b>${eur(r.margineVero)}</b><small style="display:block;color:var(--grigio);font-weight:600">${r.sconto>0?'lo sconto in tasca: '+eur(r.sconto)+' sul carico':''}</small></div>
+      <div class="numero"><span>Merce ogni 100 €</span><b>${eur(r.ogni100)}</b><small style="display:block;color:var(--grigio);font-weight:600">${r.omaggio>0?'col costo vero: '+eur(r.ogni100vero):'sul listino'}</small></div>
+    </div>
+    <div class="calc">
+      <div><span>Spesa del carico (${num(r.pagate,0)} bottiglie pagate)</span><b>${eur(r.spesa)}</b></div>
+      <div><span>Bottiglie che entrano in cantina</span><b>${num(r.bott,0)}</b></div>
+      <div><span>Calice, 1/5 di bottiglia: costo</span><b>${eur(r.costoCalice)}</b></div>
+      <div><span>Calice: prezzo consigliato (carta ÷ 4)</span><b>${eur(r.calice)}</b></div>
+      <div><span>Degustazione, 1/8: costo</span><b>${eur(r.costoDeg)}</b></div>
+    </div>
+    ${r.ogni100>42?'<div class="avviso">La merce pesa più del 42%: o alzi il prezzo o è una bottiglia da tenere solo per la carta.</div>':''}
+    ${r.ogni100<22?'<div class="avviso">Sotto il 22%: puoi permetterti un prezzo più alto senza uscire dal mercato.</div>':''}`;
+}
+function vCalcVini(){
+  const att = S.prodotti.filter(p=>p.attivo && isBott(p)).sort(byNome);
+  return `<h2 class="titolo">Calcolatrice</h2>
+  <p class="intro">Dal prezzo del fornitore al prezzo in carta, con gli omaggi contati a parte.</p>
+  ${det('ca-calc','Prezzo di una bottiglia', `
+    <form id="f-calc" class="griglia" onsubmit="return false">
+      <label>Prezzo di listino a bottiglia (€, IVA esclusa)<input name="listino" inputmode="decimal" value="12"></label>
+      <label>Bottiglie pagate<input name="pagate" inputmode="decimal" value="6"></label>
+      <label>Bottiglie in omaggio<input name="omaggio" inputmode="decimal" value="0"></label>
+      <label>Coefficiente<input name="coeff" inputmode="decimal" value="3"></label>
+    </form>
+    <div class="riga" style="margin-top:6px"><button class="btn sec picc" data-act="calc-auto">Coefficiente consigliato</button></div>
+    <div id="calc-out"></div>
+    <p class="nota">Il prezzo in carta si costruisce sul <b>listino</b>: se l'omaggio sparisce, la carta regge lo stesso. Lo sconto resta margine tuo, e qui lo vedi come «margine vero».</p>`)}
+
+  ${det('ca-fasce','Coefficienti per fascia', tabella(['Costo della bottiglia','Regola','#Esempio: costo','#Coefficiente','#Prezzo in carta'],
+    [['fino a 9 €','margine minimo '+eur(MARGINE_MINIMO)+' netti',6],['da 9 a 15 €','× 3',12],['da 15 a 22 €','× 2,75',18],['da 22 a 30 €','× 2,5',25],['da 30 a 45 €','× 2,25',35],['oltre 45 €','× 2',60]]
+      .map(([et,reg,es])=>{ const n=nettoConsigliato(es); return `<tr>${td(et)}${td(reg)}${td(eur(es),1)}${td(num(n/es,2),1)}${td(eur(Math.round(n*1.10)),1)}</tr>`; }))
+    + '<p class="nota">Due correzioni automatiche: sotto i 9 € il prezzo lo fa il margine minimo, perché stappare una bottiglia da 6 € costa quanto stapparne una da 15; e il prezzo non scende mai passando a una fascia più cara, così una bottiglia che costa 1 € in più non finisce a costare meno in carta.</p>')}
+
+  ${det('ca-scrivi','Scrivi il risultato su un vino', att.length ? `
+    <form id="f-calc-salva" class="griglia">
+      <label>Vino<select name="prodotto_id" required><option value="">Scegli…</option>${att.map(p=>`<option value="${p.id}">${esc(p.nome)}${p.annata?' '+esc(p.annata):''}</option>`).join('')}</select></label>
+      <label style="flex-direction:row;align-items:center;gap:10px;color:var(--inchiostro);font-weight:600"><input type="checkbox" name="carta" checked style="min-height:auto;width:20px;height:20px"> Aggiorna anche il prezzo in carta della bottiglia</label>
+      <button class="btn" type="submit">Salva</button>
+    </form>
+    <p class="nota">Scrive il costo vero a bottiglia (omaggi compresi) nel prodotto e, se lasci la spunta, il prezzo in carta nell'articolo della bottiglia.</p>` : '<p class="vuoto">Nessun vino in cantina.</p>')}`;
+}
+
 /* ===== ORDINE AL FORNITORE SU WHATSAPP ===== */
 /* come si ordina: a kg/litri se la fattura è a peso, altrimenti a confezioni (cassa, cartone…) */
 function unitaOrdine(p){
@@ -998,7 +1100,7 @@ function unitaOrdine(p){
   if(['KG','KGM'].includes(um)) return {per:c, sing:'kg', plur:'kg', desc:''};
   if(['L','LT'].includes(um)) return {per:c, sing:'L', plur:'L', desc:''};
   if(c>1){ const conf = String(p.confezione||'').trim(); const m = conf.match(/^(cassa|cartone|confezione|scatola|busta|sacco|vaschetta|fardello|pacco)/i); const n = m ? m[1].toLowerCase() : 'confezione';
-    const plur = {cassa:'casse',confezione:'confezioni',scatola:'scatole',busta:'buste',vaschetta:'vaschette'}[n] || (n.endsWith('o') ? n.slice(0,-1)+'i' : n);
+    const plur = {cassa:'casse',confezione:'confezioni',scatola:'scatole',busta:'buste',vaschetta:'vaschette',cartone:'cartoni',sacco:'sacchi',fardello:'fardelli',pacco:'pacchi'}[n] || (n.endsWith('o') ? n.slice(0,-1)+'i' : n.endsWith('a') ? n.slice(0,-1)+'e' : n);
     return {per:c, sing:n, plur, desc:conf}; }
   if(isBott(p)) return {per:+p.contenuto_conf, sing:'bottiglia', plur:'bottiglie', desc:''};
   return {per:c, sing:'pz', plur:'pz', desc:''};
@@ -2068,6 +2170,7 @@ document.addEventListener('input', e=>{
   if(e.target.name==='cerca') esitoCerca(e.target.form);
   if(e.target.id==='conta-cerca' || e.target.id==='conta-cat') filtraConta();
   if(e.target.closest('#f-ordine') && e.target.id!=='ord-testo') aggiornaOrdine();
+  if(e.target.closest('#f-calc')){ if(e.target.name==='coeff') e.target.form.dataset.manuale='1'; if(e.target.name==='listino') coeffAuto(); aggiornaCalcVini(); }
   if(e.target.id==='pr-cerca'){ const t=e.target.value.trim().toLowerCase(); let n=0; document.querySelectorAll('tr[data-nome]').forEach(r=>{ const ok=!t||r.dataset.nome.includes(t); r.style.display=ok?'':'none'; if(ok) n++; }); const c=$('#pr-conta'); if(c) c.textContent=n+' prodotti'; }
   if(e.target.id==='sc-cerca'){ const t=e.target.value.trim().toLowerCase(); document.querySelectorAll('.card[data-nome]').forEach(c=>c.style.display = !t || c.dataset.nome.includes(t) ? '' : 'none'); }
   if(e.target.closest('#f-carico')) aggiornaCalcCarico();
@@ -2177,6 +2280,7 @@ document.addEventListener('click', e=>{
       run(async ()=>{ for(const m of mp) await del('movimenti_piatti', m.id); for(const m of mc) await del('movimenti', m.id); for(const x of svs) await upd('servizi', x.id, {coperti:null}); for(const x of rr) await del('cassa_rapporti', x.id); }, 'Rapporto annullato: la merce è tornata in magazzino');
       break;
     }
+    case 'calc-auto': { const f=$('#f-calc'); delete f.dataset.manuale; coeffAuto(); aggiornaCalcVini(); break; }
     case 'ordina': ui.ordine = ui.ordine===t.dataset.f ? null : t.dataset.f; render(); if(ui.ordine) setTimeout(()=>{ aggiornaOrdine(); document.getElementById('f-ordine')?.scrollIntoView({behavior:'smooth',block:'start'}); }, 30); break;
     case 'ordina-wa': {
       const txt=$('#ord-testo').value.trim(); if(!txt) return toast('Scrivi almeno una quantità.','err');
@@ -2310,6 +2414,17 @@ document.addEventListener('submit', async e=>{
         const msg=[]; if(senza.length) msg.push('senza scheda, non hanno scaricato: '+[...new Set(senza)].join(', '));
         if(msg.length) setTimeout(()=>toast('Registrato. '+msg.join('. '),'err'), 60);
       }, `Registrato: cucina ${num(cuc.reduce((s,v)=>s+v.q,0),0)}, sala ${num(sal.reduce((s,v)=>s+v.q,0),0)}${coperti!=null?', '+coperti+' coperti':''}`);
+      break;
+    }
+    case 'f-calc-salva': {
+      const p=P(v('prodotto_id')); if(!p) return toast('Scegli il vino.','err');
+      const r=calcVini($('#f-calc')); if(!(r.listino>0)) return toast('Scrivi prima i numeri nella calcolatrice.','err');
+      const art = S.piatti.find(a=>a.portata==='vino in bottiglia' && compPiatto(a.id).some(c=>c.prodotto_id===p.id));
+      const carta = f.elements['carta'].checked;
+      run(async ()=>{
+        await upd('prodotti', p.id, {ultimo_prezzo:+r.reale.toFixed(4), ultima_quantita:r.bott});
+        if(carta && art) await upd('piatti', art.id, {prezzo:r.carta});
+      }, carta && art ? `${p.nome}: costo ${eur(r.reale)}, in carta ${eur(r.carta)}` : `${p.nome}: costo ${eur(r.reale)}${carta?' (articolo bottiglia non trovato)':''}`);
       break;
     }
     case 'f-coperti': {
